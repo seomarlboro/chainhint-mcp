@@ -17,11 +17,16 @@ Crypto risk intelligence for Claude Desktop, Cursor, and any MCP-compatible AI.
 
 ## Install
 
+No install needed — run straight from npm with `npx` (see configs below).
+
+From source instead:
+
 ```bash
 git clone https://github.com/seomarlboro/chainhint-mcp
 cd chainhint-mcp
 npm install
 npm run build
+# then use "command": "node", "args": ["/absolute/path/to/chainhint-mcp/dist/index.js"]
 ```
 
 ## Claude Desktop
@@ -32,8 +37,8 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 {
   "mcpServers": {
     "chainhint": {
-      "command": "node",
-      "args": ["/absolute/path/to/chainhint-mcp/dist/index.js"],
+      "command": "npx",
+      "args": ["-y", "chainhint-mcp"],
       "env": {
         "CHAINHINT_API_KEY": "ch_live_your_key_here"
       }
@@ -50,8 +55,8 @@ Add to `.cursor/mcp.json` in your project (or global `~/.cursor/mcp.json`):
 {
   "mcpServers": {
     "chainhint": {
-      "command": "node",
-      "args": ["/absolute/path/to/chainhint-mcp/dist/index.js"],
+      "command": "npx",
+      "args": ["-y", "chainhint-mcp"],
       "env": {
         "CHAINHINT_API_KEY": "ch_live_your_key_here"
       }
