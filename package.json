@@ -1,0 +1,27 @@
+{
+  "name": "chainhint-mcp",
+  "version": "1.0.0",
+  "description": "ChainHint MCP server — crypto risk intelligence tools for Claude Desktop and Cursor",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/seomarlboro/chainhint-mcp.git"
+  },
+  "homepage": "https://chainhint.com/docs/api",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}
