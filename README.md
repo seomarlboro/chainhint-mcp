@@ -4,16 +4,16 @@ Crypto risk intelligence for Claude Desktop, Cursor, and any MCP-compatible AI.
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
-| `check_wallet_risk` | Fast risk score, entity, labels, sanctions hit (54M+ labeled addresses). **Needs API key** |
-| `lookup_address` | Deep address report — entity, risk factors, GoPlus flags, counterparty exposure, balance. No key needed |
-| `get_trace_status` | Fund-trace summary for a public hack incident — hops, endpoints by type (exchange/mixer/bridge/defi), exposure. No key needed |
+| Tool | Description | Limit |
+|------|-------------|-------|
+| `check_wallet_risk` | Fast risk score, entity, labels, sanctions hit (54M+ labeled addresses) | **3 / day** free · 10,000 / day with key |
+| `lookup_address` | Deep address report — entity, risk factors, GoPlus flags, counterparty exposure, balance | **10 / day** free · 100 / hour with key |
+| `get_trace_status` | Fund-trace summary for a public hack incident — hops, endpoints by type (exchange/mixer/bridge/defi), exposure | Unlimited |
 
 ## Requirements
 
 - Node.js 18+
-- Optional: ChainHint Agency plan API key (`ch_live_...`) from [chainhint.com/settings](https://chainhint.com/settings) — only `check_wallet_risk` needs it
+- Nothing else. **No API key needed to start** — every tool has a free daily allowance (per IP). An Agency plan key (`ch_live_...`, [chainhint.com/settings](https://chainhint.com/settings)) lifts the limits.
 
 ## Install
 
@@ -38,10 +38,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
   "mcpServers": {
     "chainhint": {
       "command": "npx",
-      "args": ["-y", "chainhint-mcp"],
-      "env": {
-        "CHAINHINT_API_KEY": "ch_live_your_key_here"
-      }
+      "args": ["-y", "chainhint-mcp"]
     }
   }
 }
@@ -56,13 +53,37 @@ Add to `.cursor/mcp.json` in your project (or global `~/.cursor/mcp.json`):
   "mcpServers": {
     "chainhint": {
       "command": "npx",
-      "args": ["-y", "chainhint-mcp"],
-      "env": {
-        "CHAINHINT_API_KEY": "ch_live_your_key_here"
-      }
+      "args": ["-y", "chainhint-mcp"]
     }
   }
 }
+```
+
+## Claude Code
+
+```bash
+claude mcp add chainhint -- npx -y chainhint-mcp
+```
+
+## Lifting the free limits
+
+Add an Agency key to the server entry (any client):
+
+```json
+"env": { "CHAINHINT_API_KEY": "ch_live_your_key_here" }
+```
+
+## What the agent sees
+
+```
+## Wallet Risk Report: 0x47666f...9486e2
+**Chain:** ethereum
+**Risk Score:** 85/100 — **CRITICAL**
+**Entity:** Bybit Hack Exploiter (hacker)
+**Labels:** Hacker/Exploiter, Bybit Hack Exploiter
+**In ChainHint DB:** yes (sources: chainhint:manual)
+
+Free tier: 2 of 3 checks left today — set CHAINHINT_API_KEY (Agency plan, https://chainhint.com/pricing) for 10,000/day.
 ```
 
 ## Development (no build step)
@@ -75,7 +96,7 @@ npm run dev
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `CHAINHINT_API_KEY` | — | API key from chainhint.com (Agency plan). Required only for `check_wallet_risk` |
+| `CHAINHINT_API_KEY` | — | Agency plan key from chainhint.com. Lifts the free limits (3 checks + 10 lookups per day) to 10,000 / day |
 | `CHAINHINT_API_URL` | — | Override API base URL (default: production) |
 | `CHAINHINT_SUPABASE_ANON_KEY` | — | Override anon key for get_trace_status (public incidents) |
 

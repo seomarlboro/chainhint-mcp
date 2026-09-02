@@ -10,8 +10,9 @@
  *   - lookup_address      → address-lookup API (entity, risk factors, exposure, balance) — public
  *   - get_trace_status    → public incident fund-trace summary (endpoints, hops, exposure) — public
  *
- * Auth: CHAINHINT_API_KEY env var (Agency plan API key: ch_live_...) is only
- * required for check_wallet_risk. The other two tools hit public endpoints.
+ * Auth: works without a key. check_wallet_risk has a free tier of 3 checks
+ * per IP per day; lookup_address 10 per day; get_trace_status is unlimited.
+ * CHAINHINT_API_KEY (Agency plan, ch_live_...) lifts the limits to 10,000/day.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -25,39 +26,64 @@ const BASE_URL = process.env.CHAINHINT_API_URL ?? "https://kjiwfwymnuzxriokhcjk.
 const SUPABASE_URL = process.env.CHAINHINT_SUPABASE_URL ?? "https://kjiwfwymnuzxriokhcjk.supabase.co";
 const SUPABASE_ANON_KEY = process.env.CHAINHINT_SUPABASE_ANON_KEY ?? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtqaXdmd3ltbnV6eHJpb2toY2prIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3MzkxODgsImV4cCI6MjA4ODMxNTE4OH0.VqzzF_jI8zF072cbjWEDbYo3PnMDlIPy621iWkXEqyo";
 
-const NO_KEY_MESSAGE =
-  "check_wallet_risk requires CHAINHINT_API_KEY (Agency plan, ch_live_...). " +
-  "Get one at chainhint.com → Settings → API Keys, or use lookup_address which needs no key.";
+const VERSION = "1.1.0";
+const USER_AGENT = `chainhint-mcp/${VERSION}`;
+const FREE_CHECKS_PER_DAY = 3;
+const UPGRADE_HINT = "set CHAINHINT_API_KEY (Agency plan, https://chainhint.com/pricing) for 10,000/day";
 
 if (!API_KEY) {
-  console.error("[chainhint-mcp] WARN: CHAINHINT_API_KEY is not set — check_wallet_risk will be unavailable.");
-  console.error("  lookup_address and get_trace_status work without a key.");
+  console.error(`[chainhint-mcp] No CHAINHINT_API_KEY — running on the free tier (${FREE_CHECKS_PER_DAY} wallet checks + 10 lookups per day per IP).`);
 }
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
-async function apiGet(
+type ApiResult<T> = { body: T; headers: Headers };
+
+async function apiGet<T = unknown>(
   path: string,
   params: Record<string, string>,
-  opts: { auth: boolean },
-): Promise<unknown> {
+): Promise<ApiResult<T>> {
   const url = new URL(`${BASE_URL}${path}`);
   for (const [k, v] of Object.entries(params)) {
     if (v) url.searchParams.set(k, v);
   }
 
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (opts.auth && API_KEY) {
+  // User-Agent lets the backend attribute traffic (api_usage_log.caller) and
+  // apply the MCP-specific free allowance. The key, when present, goes in
+  // X-Api-Key so both wallet-reputation and address-lookup recognise it.
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "User-Agent": USER_AGENT,
+  };
+  if (API_KEY) {
     headers["X-Api-Key"] = API_KEY;
     headers["Authorization"] = `Bearer ${API_KEY}`;
   }
 
   const res = await fetch(url.toString(), { headers });
-  const body = (await res.json().catch(() => ({ error: `HTTP ${res.status}` }))) as { error?: string };
+  const body = (await res.json().catch(() => ({ error: `HTTP ${res.status}` }))) as T & {
+    error?: string;
+    reset_at?: number;
+  };
   if (!res.ok) {
-    throw new Error(body?.error ?? `HTTP ${res.status}: ${url.toString()}`);
+    let msg = body?.error ?? `HTTP ${res.status}: ${url.toString()}`;
+    if (res.status === 429 && body?.reset_at) {
+      msg += ` Resets at ${new Date(body.reset_at * 1000).toISOString()}.`;
+    }
+    throw new Error(msg);
   }
-  return body;
+  return { body, headers: res.headers };
+}
+
+/** "Free tier: 2 of 3 checks left today — set CHAINHINT_API_KEY …" or null. */
+function quotaLine(headers: Headers, what: string): string | null {
+  if (headers.get("x-chainhint-tier") !== "free") return null;
+  const limit = Number(headers.get("x-ratelimit-limit"));
+  const remaining = Number(headers.get("x-ratelimit-remaining"));
+  if (!Number.isFinite(limit) || !Number.isFinite(remaining)) return null;
+  const reset = Number(headers.get("x-ratelimit-reset"));
+  const resetStr = Number.isFinite(reset) && reset > 0 ? ` (resets ${new Date(reset * 1000).toISOString().slice(0, 16)}Z)` : "";
+  return `Free tier: ${remaining} of ${limit} ${what} left today${resetStr} — ${UPGRADE_HINT}.`;
 }
 
 async function supabaseGet(table: string, params: Record<string, string>): Promise<unknown[]> {
@@ -133,28 +159,25 @@ function formatExposure(label: string, buckets: ExposureBucket[] | undefined): s
 
 const server = new McpServer({
   name: "chainhint",
-  version: "1.0.1",
+  version: VERSION,
 });
 
 // ── Tool 1: check_wallet_risk ─────────────────────────────────────────────────
 
 server.tool(
   "check_wallet_risk",
-  "Fast risk check for a crypto wallet address against ChainHint's 54M+ labeled address database (12 chains). Returns risk score 0-100, risk level (clean/low/medium/high/critical/sanctioned), entity name and category, labels, and sanctions hit. Requires CHAINHINT_API_KEY (Agency plan). For a keyless, deeper look (risk factors, exposure, balance) use lookup_address.",
+  "Fast risk check for a crypto wallet address against ChainHint's 54M+ labeled address database (12 chains). Returns risk score 0-100, risk level (clean/low/medium/high/critical/sanctioned), entity name and category, labels, and sanctions hit. Use it to decide allow/warn/block before paying or interacting with a counterparty wallet. Free: 3 checks per day without a key; CHAINHINT_API_KEY (Agency plan) lifts it to 10,000/day. For a deeper report (risk factors, exposure, balance) use lookup_address.",
   {
     address: z.string().describe("Wallet address to check (EVM 0x..., Bitcoin, or Solana)"),
     chain: z.string().optional().describe("Blockchain: ethereum, bsc, polygon, arbitrum, optimism, base, avalanche, solana, bitcoin (default: auto-detect from address format)"),
   },
   async ({ address, chain }) => {
-    if (!API_KEY) {
-      return { content: [{ type: "text", text: NO_KEY_MESSAGE }] };
-    }
     try {
       const params: Record<string, string> = { address };
       if (chain) params.chain = chain;
 
       // wallet-reputation returns a flat object (no {success,data} wrapper).
-      const d = await apiGet("/wallet-reputation", params, { auth: true }) as {
+      const { body: d, headers } = await apiGet<{
         address: string;
         chain: string;
         risk_score: number;
@@ -167,7 +190,8 @@ server.tool(
         found_in_db: boolean;
         sources: string[];
         checked_at: string;
-      };
+        tier?: "free" | "api_key";
+      }>("/wallet-reputation", params);
 
       const lines: string[] = [
         `## Wallet Risk Report: ${truncateAddr(d.address)}`,
@@ -195,6 +219,8 @@ server.tool(
       lines.push(`**In ChainHint DB:** ${d.found_in_db ? "yes" : "no"}${d.sources?.length ? ` (sources: ${d.sources.join(", ")})` : ""}`);
       lines.push(`**Checked at:** ${d.checked_at}`);
 
+      const quota = quotaLine(headers, "checks");
+      if (quota) lines.push(``, quota);
       lines.push(`\n*Powered by ChainHint — chainhint.com*`);
 
       return { content: [{ type: "text", text: lines.join("\n") }] };
@@ -208,7 +234,7 @@ server.tool(
 
 server.tool(
   "lookup_address",
-  "Detailed lookup of a blockchain address: entity attribution, risk score with the factors behind it, sanctions and GoPlus security flags, counterparty exposure (where funds came from / went to, by category with named entities), balance, token count and transaction count. Works without an API key. Supports EVM chains, Bitcoin, Solana, TRON, TON.",
+  "Detailed lookup of a blockchain address: entity attribution, risk score with the factors behind it, sanctions and GoPlus security flags, counterparty exposure (where funds came from / went to, by category with named entities), balance, token count and transaction count. Free: 10 lookups per day without a key; CHAINHINT_API_KEY lifts it. Supports EVM chains, Bitcoin, Solana, TRON, TON.",
   {
     address: z.string().describe("Blockchain address to look up"),
     chain: z.string().optional().describe("Blockchain (ethereum, bsc, polygon, arbitrum, optimism, base, avalanche, solana, bitcoin, tron, ton)"),
@@ -218,7 +244,7 @@ server.tool(
       const params: Record<string, string> = { address };
       if (chain) params.chain = chain;
 
-      const data = await apiGet("/address-lookup", params, { auth: false }) as {
+      const { body: data, headers: lookupHeaders } = await apiGet<{
         success: boolean;
         data?: {
           address: string;
@@ -246,7 +272,7 @@ server.tool(
           degraded?: unknown;
         };
         error?: string;
-      };
+      }>("/address-lookup", params);
 
       if (!data.success || !data.data) {
         return { content: [{ type: "text", text: `Error: ${data.error ?? "Unknown error"}` }] };
@@ -303,6 +329,8 @@ server.tool(
         lines.push(...formatExposure("Outflow by category", ex.outflow));
       }
 
+      const lookupQuota = quotaLine(lookupHeaders, "lookups");
+      if (lookupQuota) lines.push(``, lookupQuota);
       lines.push(``, `🔗 https://chainhint.com/address/${d.address}?chain=${d.chain}`);
       lines.push(`*Powered by ChainHint — chainhint.com*`);
 
