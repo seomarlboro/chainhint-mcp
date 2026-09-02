@@ -155,6 +155,29 @@ function formatExposure(label: string, buckets: ExposureBucket[] | undefined): s
   ];
 }
 
+type PublicIncidentRow = {
+  id: string;
+  title: string | null;
+  chain: string;
+  amount_usd: number | null;
+  estimated_loss_usd: number | null;
+  risk_score: number | null;
+};
+
+/** Public incident whose attacker_address matches, or null (errors swallowed — best effort). */
+async function findPublicIncidentByAttacker(address: string): Promise<PublicIncidentRow | null> {
+  try {
+    const rows = await supabaseGet("public_incidents_view", {
+      select: "id,title,chain,amount_usd,estimated_loss_usd,risk_score",
+      attacker_address: `eq.${normalizeAddr(address)}`,
+      limit: "1",
+    }) as PublicIncidentRow[];
+    return rows[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // ── MCP Server ────────────────────────────────────────────────────────────────
 
 const server = new McpServer({
@@ -197,8 +220,27 @@ server.tool(
         `## Wallet Risk Report: ${truncateAddr(d.address)}`,
         `**Address:** ${d.address}`,
         `**Chain:** ${d.chain}`,
-        `**Risk Score:** ${d.risk_score}/100 — **${(d.risk_level ?? formatRiskLevel(d.risk_score)).toUpperCase()}**`,
       ];
+
+      // Canon (same as chainhint.com and the TG bot): an address that is not in
+      // the labeled database has NO DATA — that is not evidence it is clean.
+      // The API still returns risk_score 0 / "clean" for not-found, so the
+      // wording is fixed here, and public incidents are cross-checked so a
+      // known hack attacker that never got an `addresses` row is not
+      // presented as unknown.
+      if (!d.found_in_db) {
+        lines.push(`**Risk:** ⚪ NO DATA — address is not in ChainHint's labeled database. This is not evidence it is clean.`);
+        const inc = await findPublicIncidentByAttacker(d.address);
+        if (inc) {
+          lines.push(
+            `⚠️ **Known attacker in a public hack incident:** ${inc.title ?? "Unnamed incident"} (${inc.chain}, loss ${usd(inc.amount_usd ?? inc.estimated_loss_usd)}${inc.risk_score != null ? `, incident risk ${inc.risk_score}/100` : ""}). Treat as HIGH risk.`,
+            `🔗 https://chainhint.com/incident/${inc.id}`,
+          );
+        }
+        lines.push(`Use lookup_address for an on-chain assessment (risk factors, GoPlus flags, counterparty exposure).`);
+      } else {
+        lines.push(`**Risk Score:** ${d.risk_score}/100 — **${(d.risk_level ?? formatRiskLevel(d.risk_score)).toUpperCase()}**`);
+      }
 
       if (d.sanctions?.hit) {
         lines.push(`⛔ **SANCTIONED / OFAC-linked**`);
