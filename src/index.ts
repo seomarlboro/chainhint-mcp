@@ -81,6 +81,8 @@ function quotaLine(headers: Headers, what: string): string | null {
   const limit = Number(headers.get("x-ratelimit-limit"));
   const remaining = Number(headers.get("x-ratelimit-remaining"));
   if (!Number.isFinite(limit) || !Number.isFinite(remaining)) return null;
+  // Bypass-listed IPs get MAX_SAFE_INTEGER from the backend — no quota to report.
+  if (limit >= 1_000_000) return null;
   const reset = Number(headers.get("x-ratelimit-reset"));
   const resetStr = Number.isFinite(reset) && reset > 0 ? ` (resets ${new Date(reset * 1000).toISOString().slice(0, 16)}Z)` : "";
   return `Free tier: ${remaining} of ${limit} ${what} left today${resetStr} — ${UPGRADE_HINT}.`;
