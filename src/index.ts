@@ -6,11 +6,12 @@
  * and any MCP-compatible AI client.
  *
  * Tools:
- *   - check_wallet_risk   → wallet-reputation API (risk score, labels, sanctions)
- *   - lookup_address      → address-lookup API (entity, category, transaction history)
- *   - get_trace_status    → incident fund trace status (flow graph summary)
+ *   - check_wallet_risk   → wallet-reputation API (risk score, labels, sanctions) — needs API key
+ *   - lookup_address      → address-lookup API (entity, risk factors, exposure, balance) — public
+ *   - get_trace_status    → public incident fund-trace summary (endpoints, hops, exposure) — public
  *
- * Auth: set CHAINHINT_API_KEY env var (Agency plan API key: ch_live_...)
+ * Auth: CHAINHINT_API_KEY env var (Agency plan API key: ch_live_...) is only
+ * required for check_wallet_risk. The other two tools hit public endpoints.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -24,29 +25,35 @@ const BASE_URL = process.env.CHAINHINT_API_URL ?? "https://kjiwfwymnuzxriokhcjk.
 const SUPABASE_URL = process.env.CHAINHINT_SUPABASE_URL ?? "https://kjiwfwymnuzxriokhcjk.supabase.co";
 const SUPABASE_ANON_KEY = process.env.CHAINHINT_SUPABASE_ANON_KEY ?? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtqaXdmd3ltbnV6eHJpb2toY2prIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3MzkxODgsImV4cCI6MjA4ODMxNTE4OH0.VqzzF_jI8zF072cbjWEDbYo3PnMDlIPy621iWkXEqyo";
 
+const NO_KEY_MESSAGE =
+  "check_wallet_risk requires CHAINHINT_API_KEY (Agency plan, ch_live_...). " +
+  "Get one at chainhint.com → Settings → API Keys, or use lookup_address which needs no key.";
+
 if (!API_KEY) {
-  console.error("[chainhint-mcp] ERROR: CHAINHINT_API_KEY is not set.");
-  console.error("  Get your API key from chainhint.com → Settings → API Keys (Agency plan required)");
-  process.exit(1);
+  console.error("[chainhint-mcp] WARN: CHAINHINT_API_KEY is not set — check_wallet_risk will be unavailable.");
+  console.error("  lookup_address and get_trace_status work without a key.");
 }
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
-async function apiGet(path: string, params: Record<string, string> = {}): Promise<unknown> {
+async function apiGet(
+  path: string,
+  params: Record<string, string>,
+  opts: { auth: boolean },
+): Promise<unknown> {
   const url = new URL(`${BASE_URL}${path}`);
   for (const [k, v] of Object.entries(params)) {
     if (v) url.searchParams.set(k, v);
   }
 
-  const res = await fetch(url.toString(), {
-    headers: {
-      "X-Api-Key": API_KEY!,
-      "Authorization": `Bearer ${API_KEY}`,
-      "Content-Type": "application/json",
-    },
-  });
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (opts.auth && API_KEY) {
+    headers["X-Api-Key"] = API_KEY;
+    headers["Authorization"] = `Bearer ${API_KEY}`;
+  }
 
-  const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+  const res = await fetch(url.toString(), { headers });
+  const body = (await res.json().catch(() => ({ error: `HTTP ${res.status}` }))) as { error?: string };
   if (!res.ok) {
     throw new Error(body?.error ?? `HTTP ${res.status}: ${url.toString()}`);
   }
@@ -63,7 +70,6 @@ async function supabaseGet(table: string, params: Record<string, string>): Promi
     headers: {
       "apikey": SUPABASE_ANON_KEY,
       "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-      "X-Api-Key": API_KEY!,
       "Accept": "application/json",
     },
   });
@@ -72,7 +78,7 @@ async function supabaseGet(table: string, params: Record<string, string>): Promi
     const err = await res.text();
     throw new Error(`Supabase ${res.status}: ${err}`);
   }
-  return res.json();
+  return res.json() as Promise<unknown[]>;
 }
 
 // ── Format helpers ────────────────────────────────────────────────────────────
@@ -89,76 +95,105 @@ function truncateAddr(addr: string): string {
   return addr.length > 12 ? `${addr.slice(0, 8)}...${addr.slice(-6)}` : addr;
 }
 
+function usd(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "Unknown";
+  if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
+  if (Math.abs(n) >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
+  return `$${n.toFixed(2)}`;
+}
+
+// EVM addresses are case-insensitive and stored lowercase; base58 chains
+// (BTC/TRON/SOL/TON) are case-sensitive — never lowercase those.
+function normalizeAddr(addr: string): string {
+  const a = addr.trim();
+  return a.startsWith("0x") ? a.toLowerCase() : a;
+}
+
+type ExposureBucket = {
+  category: string;
+  usd: number;
+  pct: number;
+  counterparties: number;
+  top_entities: string[];
+};
+
+function formatExposure(label: string, buckets: ExposureBucket[] | undefined): string[] {
+  if (!buckets?.length) return [];
+  const sorted = [...buckets].sort((a, b) => (b.usd ?? 0) - (a.usd ?? 0)).slice(0, 5);
+  return [
+    `**${label}:**`,
+    ...sorted.map((b) => {
+      const who = b.top_entities?.length ? ` — ${b.top_entities.slice(0, 3).join(", ")}` : "";
+      return `- ${b.category}: ${usd(b.usd)} (${b.pct}%, ${b.counterparties} counterpart${b.counterparties === 1 ? "y" : "ies"})${who}`;
+    }),
+  ];
+}
+
 // ── MCP Server ────────────────────────────────────────────────────────────────
 
 const server = new McpServer({
   name: "chainhint",
-  version: "1.0.0",
+  version: "1.0.1",
 });
 
 // ── Tool 1: check_wallet_risk ─────────────────────────────────────────────────
 
 server.tool(
   "check_wallet_risk",
-  "Check the risk score and labels for a crypto wallet address. Returns risk level (CLEAN/LOW/MEDIUM/HIGH/CRITICAL), entity label, category, sanctions status, and transaction statistics. Use this to assess whether a wallet is associated with hacks, scams, mixers, or sanctioned entities.",
+  "Fast risk check for a crypto wallet address against ChainHint's 54M+ labeled address database (12 chains). Returns risk score 0-100, risk level (clean/low/medium/high/critical/sanctioned), entity name and category, labels, and sanctions hit. Requires CHAINHINT_API_KEY (Agency plan). For a keyless, deeper look (risk factors, exposure, balance) use lookup_address.",
   {
     address: z.string().describe("Wallet address to check (EVM 0x..., Bitcoin, or Solana)"),
     chain: z.string().optional().describe("Blockchain: ethereum, bsc, polygon, arbitrum, optimism, base, avalanche, solana, bitcoin (default: auto-detect from address format)"),
   },
   async ({ address, chain }) => {
+    if (!API_KEY) {
+      return { content: [{ type: "text", text: NO_KEY_MESSAGE }] };
+    }
     try {
       const params: Record<string, string> = { address };
       if (chain) params.chain = chain;
 
-      const data = await apiGet("/wallet-reputation", params) as {
-        success: boolean;
-        data?: {
-          address: string;
-          chain: string;
-          risk?: { score: number; level: string; flags: string[] };
-          entity?: { name: string; category: string; label: string };
-          sanctions?: { is_sanctioned: boolean; programs: string[] };
-          stats?: { tx_count: number; first_seen: string; last_seen: string };
-        };
-        error?: string;
+      // wallet-reputation returns a flat object (no {success,data} wrapper).
+      const d = await apiGet("/wallet-reputation", params, { auth: true }) as {
+        address: string;
+        chain: string;
+        risk_score: number;
+        risk_level: string;
+        category: string | null;
+        entity: { name: string; category: string; subcategory: string | null; verified: boolean } | null;
+        labels: string[];
+        sanctions: { hit: boolean };
+        is_contract: boolean | null;
+        found_in_db: boolean;
+        sources: string[];
+        checked_at: string;
       };
-
-      if (!data.success || !data.data) {
-        return { content: [{ type: "text", text: `Error: ${data.error ?? "Unknown error"}` }] };
-      }
-
-      const d = data.data;
-      const risk = d.risk;
-      const entity = d.entity;
-      const sanctions = d.sanctions;
-      const stats = d.stats;
 
       const lines: string[] = [
         `## Wallet Risk Report: ${truncateAddr(d.address)}`,
+        `**Address:** ${d.address}`,
         `**Chain:** ${d.chain}`,
-        `**Risk Score:** ${risk?.score ?? "N/A"}/100 — **${risk?.level ?? formatRiskLevel(risk?.score ?? 0)}**`,
+        `**Risk Score:** ${d.risk_score}/100 — **${(d.risk_level ?? formatRiskLevel(d.risk_score)).toUpperCase()}**`,
       ];
 
-      if (entity?.name) {
-        lines.push(`**Entity:** ${entity.name} (${entity.category})`);
-        if (entity.label) lines.push(`**Label:** ${entity.label}`);
+      if (d.sanctions?.hit) {
+        lines.push(`⛔ **SANCTIONED / OFAC-linked**`);
+      }
+
+      if (d.entity?.name) {
+        const sub = d.entity.subcategory ? ` / ${d.entity.subcategory}` : "";
+        const ver = d.entity.verified ? ", verified" : "";
+        lines.push(`**Entity:** ${d.entity.name} (${d.entity.category}${sub}${ver})`);
+      } else if (d.category) {
+        lines.push(`**Category:** ${d.category}`);
       } else {
         lines.push(`**Entity:** Unknown / unlabeled`);
       }
 
-      if (sanctions?.is_sanctioned) {
-        lines.push(`⛔ **SANCTIONED** — Programs: ${sanctions.programs.join(", ")}`);
-      }
-
-      if (risk?.flags?.length) {
-        lines.push(`**Risk Flags:** ${risk.flags.join(", ")}`);
-      }
-
-      if (stats) {
-        lines.push(`**Transactions:** ${stats.tx_count?.toLocaleString() ?? "N/A"}`);
-        if (stats.first_seen) lines.push(`**First seen:** ${stats.first_seen.slice(0, 10)}`);
-        if (stats.last_seen) lines.push(`**Last seen:** ${stats.last_seen.slice(0, 10)}`);
-      }
+      if (d.labels?.length) lines.push(`**Labels:** ${[...new Set(d.labels)].join(", ")}`);
+      if (d.is_contract != null) lines.push(`**Type:** ${d.is_contract ? "Smart Contract" : "EOA (wallet)"}`);
+      lines.push(`**In ChainHint DB:** ${d.found_in_db ? "yes" : "no"}${d.sources?.length ? ` (sources: ${d.sources.join(", ")})` : ""}`);
+      lines.push(`**Checked at:** ${d.checked_at}`);
 
       lines.push(`\n*Powered by ChainHint — chainhint.com*`);
 
@@ -173,31 +208,42 @@ server.tool(
 
 server.tool(
   "lookup_address",
-  "Look up detailed information about a blockchain address including entity label, risk assessment, transaction history, and known associations. More detailed than check_wallet_risk — includes transaction counts, token holdings summary, and entity metadata.",
+  "Detailed lookup of a blockchain address: entity attribution, risk score with the factors behind it, sanctions and GoPlus security flags, counterparty exposure (where funds came from / went to, by category with named entities), balance, token count and transaction count. Works without an API key. Supports EVM chains, Bitcoin, Solana, TRON, TON.",
   {
     address: z.string().describe("Blockchain address to look up"),
-    chain: z.string().optional().describe("Blockchain (ethereum, bsc, polygon, arbitrum, optimism, base, avalanche, solana, bitcoin)"),
+    chain: z.string().optional().describe("Blockchain (ethereum, bsc, polygon, arbitrum, optimism, base, avalanche, solana, bitcoin, tron, ton)"),
   },
   async ({ address, chain }) => {
     try {
       const params: Record<string, string> = { address };
       if (chain) params.chain = chain;
 
-      const data = await apiGet("/address-lookup", params) as {
+      const data = await apiGet("/address-lookup", params, { auth: false }) as {
         success: boolean;
         data?: {
           address: string;
           chain: string;
-          label?: string;
-          entity?: string;
-          category?: string;
-          risk?: { score: number; level: string; flags: string[] };
-          tx_count?: number;
-          balance?: string;
-          first_seen?: string;
-          last_seen?: string;
+          risk?: { score: number; level: string; factors?: Record<string, boolean>; details?: string[] };
+          entity?: { name: string; category: string; subcategory?: string | null; verified?: boolean; confidence?: number; source?: string } | null;
+          labels?: string[];
           is_contract?: boolean;
-          sanctions?: { is_sanctioned: boolean };
+          sanctions?: { identifications?: Array<{ name?: string; program?: string; url?: string }> };
+          goplus?: Record<string, string>;
+          balance_usd?: number;
+          tx_count?: number;
+          tokens?: unknown[];
+          exposure?: {
+            inflow?: ExposureBucket[];
+            outflow?: ExposureBucket[];
+            total_in_usd?: number;
+            total_out_usd?: number;
+            counterparties_total?: number;
+            counterparties_identified?: number;
+            risk?: { level: string; pct: number; details?: string[] };
+            window?: string;
+          };
+          risk_status?: string;
+          degraded?: unknown;
         };
         error?: string;
       };
@@ -209,31 +255,56 @@ server.tool(
       const d = data.data;
       const lines: string[] = [
         `## Address Lookup: ${truncateAddr(d.address)}`,
+        `**Address:** ${d.address}`,
         `**Chain:** ${d.chain}`,
         `**Type:** ${d.is_contract ? "Smart Contract" : "EOA (wallet)"}`,
       ];
 
-      if (d.entity) lines.push(`**Entity:** ${d.entity}`);
-      if (d.label) lines.push(`**Label:** ${d.label}`);
-      if (d.category) lines.push(`**Category:** ${d.category}`);
-      if (d.balance) lines.push(`**Balance:** ${d.balance}`);
-
-      const score = d.risk?.score;
-      if (score !== undefined) {
-        lines.push(`**Risk Score:** ${score}/100 — ${formatRiskLevel(score)}`);
+      if (d.entity?.name) {
+        const sub = d.entity.subcategory ? ` / ${d.entity.subcategory}` : "";
+        const conf = d.entity.confidence != null ? `, confidence ${Math.round(d.entity.confidence * 100)}%` : "";
+        lines.push(`**Entity:** ${d.entity.name} (${d.entity.category}${sub}${conf})`);
+      } else {
+        lines.push(`**Entity:** Unknown / unlabeled`);
       }
-      if (d.risk?.flags?.length) {
-        lines.push(`**Flags:** ${d.risk.flags.join(", ")}`);
-      }
-      if (d.sanctions?.is_sanctioned) {
-        lines.push(`⛔ **SANCTIONED**`);
+      if (d.labels?.length) lines.push(`**Labels:** ${[...new Set(d.labels)].join(", ")}`);
+
+      if (d.risk) {
+        const level = (d.risk.level ?? formatRiskLevel(d.risk.score)).toUpperCase();
+        lines.push(`**Risk Score:** ${d.risk.score}/100 — **${level}**`);
+        const factors = Object.entries(d.risk.factors ?? {}).filter(([, v]) => v).map(([k]) => k);
+        if (factors.length) lines.push(`**Risk Factors:** ${factors.join(", ")}`);
+        if (d.risk.details?.length) lines.push(`**Risk Details:** ${d.risk.details.join("; ")}`);
       }
 
-      if (d.tx_count) lines.push(`**Transactions:** ${d.tx_count.toLocaleString()}`);
-      if (d.first_seen) lines.push(`**First seen:** ${d.first_seen.slice(0, 10)}`);
-      if (d.last_seen) lines.push(`**Last seen:** ${d.last_seen.slice(0, 10)}`);
+      const sanctionIds = d.sanctions?.identifications ?? [];
+      if (sanctionIds.length) {
+        const names = sanctionIds.map((s) => [s.name, s.program].filter(Boolean).join(" / ")).filter(Boolean);
+        lines.push(`⛔ **SANCTIONED** — ${names.join("; ") || `${sanctionIds.length} identification(s)`}`);
+      }
 
-      lines.push(`\n*Powered by ChainHint — chainhint.com*`);
+      const goplusFlags = Object.entries(d.goplus ?? {})
+        .filter(([k, v]) => v === "1" && k !== "contract_address")
+        .map(([k]) => k);
+      if (goplusFlags.length) lines.push(`**GoPlus Security Flags:** ${goplusFlags.join(", ")}`);
+
+      if (d.balance_usd != null) lines.push(`**Balance:** ${usd(d.balance_usd)}${d.tokens?.length ? ` across ${d.tokens.length} asset(s)` : ""}`);
+      if (d.tx_count != null) lines.push(`**Transactions:** ${d.tx_count.toLocaleString()}`);
+
+      const ex = d.exposure;
+      if (ex && (ex.inflow?.length || ex.outflow?.length)) {
+        lines.push(``, `### Counterparty Exposure (${ex.window ?? "recent transfers"})`);
+        if (ex.risk?.level) {
+          lines.push(`**Exposure Risk:** ${ex.risk.level.toUpperCase()} (${ex.risk.pct}% of volume to/from risky counterparties)`);
+          if (ex.risk.details?.length) lines.push(...ex.risk.details.map((s) => `- ${s}`));
+        }
+        lines.push(`**Volume:** in ${usd(ex.total_in_usd)}, out ${usd(ex.total_out_usd)}; ${ex.counterparties_identified ?? 0}/${ex.counterparties_total ?? 0} counterparties identified`);
+        lines.push(...formatExposure("Inflow by category", ex.inflow));
+        lines.push(...formatExposure("Outflow by category", ex.outflow));
+      }
+
+      lines.push(``, `🔗 https://chainhint.com/address/${d.address}?chain=${d.chain}`);
+      lines.push(`*Powered by ChainHint — chainhint.com*`);
 
       return { content: [{ type: "text", text: lines.join("\n") }] };
     } catch (err) {
@@ -244,9 +315,18 @@ server.tool(
 
 // ── Tool 3: get_trace_status ──────────────────────────────────────────────────
 
+type Endpoint = {
+  address: string;
+  type?: string;
+  entity?: string | null;
+  entity_name?: string | null;
+  entity_category?: string | null;
+  amount_usd?: number | null;
+};
+
 server.tool(
   "get_trace_status",
-  "Get the fund trace status for a crypto hack incident. Returns how stolen funds moved — number of hops, total amount traced, known endpoints (exchanges, mixers, bridges), and current movement status (in_transit, mixing, reached_exchange, dormant). Useful for incident response and understanding where stolen funds went.",
+  "Fund-trace summary for a publicly tracked crypto hack incident on ChainHint. Returns incident status, estimated loss, trace depth (hops) and graph size, where the stolen funds ended up (endpoints grouped by type: exchange, mixer, bridge, defi, unknown — with named entities and USD amounts), and the attacker's counterparty exposure. Look up by attacker address or ChainHint incident UUID. Works without an API key.",
   {
     attacker_address: z.string().optional().describe("Attacker wallet address to look up incident by"),
     incident_id: z.string().optional().describe("Incident UUID (from chainhint.com) — alternative to attacker_address"),
@@ -257,31 +337,42 @@ server.tool(
         return { content: [{ type: "text", text: "Error: provide either attacker_address or incident_id" }] };
       }
 
-      // Query public incidents via Supabase REST
-      let queryParams: Record<string, string> = {
-        select: "id,title,status,chain,attacker_address,amount_usd,estimated_loss_usd,created_at,source",
-        is_public: "eq.true",
+      // public_incidents_view is the canonical anonymous read path (SECURITY DEFINER,
+      // exposes only is_public rows and only public-safe columns).
+      const queryParams: Record<string, string> = {
+        select: "id,title,status,chain,attacker_address,amount_usd,estimated_loss_usd,risk_score,incident_type,hack_date,display_date,created_at,updated_at,source,endpoints,flow_graph,counterparty_exposure",
         limit: "1",
         order: "created_at.desc",
       };
 
       if (incident_id) {
         queryParams["id"] = `eq.${incident_id}`;
-        delete queryParams["is_public"];
       } else if (attacker_address) {
-        queryParams["attacker_address"] = `eq.${attacker_address.toLowerCase()}`;
+        queryParams["attacker_address"] = `eq.${normalizeAddr(attacker_address)}`;
       }
 
-      const rows = await supabaseGet("incidents", queryParams) as Array<{
+      const rows = await supabaseGet("public_incidents_view", queryParams) as Array<{
         id: string;
-        title: string;
+        title: string | null;
         status: string;
         chain: string;
         attacker_address: string;
-        amount_usd: number;
-        estimated_loss_usd: number;
+        amount_usd: number | null;
+        estimated_loss_usd: number | null;
+        risk_score: number | null;
+        incident_type: string | null;
+        hack_date: string | null;
+        display_date: string | null;
         created_at: string;
-        source: string;
+        updated_at: string | null;
+        source: string | null;
+        endpoints: Endpoint[] | null;
+        flow_graph: { nodes?: unknown[]; edges?: Array<{ depth?: number }> } | null;
+        counterparty_exposure: {
+          risk?: { level: string; pct: number; details?: string[] };
+          inflow?: ExposureBucket[];
+          outflow?: ExposureBucket[];
+        } | null;
       }>;
 
       if (!rows?.length) {
@@ -297,26 +388,84 @@ server.tool(
 
       const inc = rows[0];
       const lossUsd = inc.amount_usd ?? inc.estimated_loss_usd;
+      const date = inc.display_date ?? inc.hack_date ?? inc.created_at;
+      const status = (inc.status ?? "unknown").toLowerCase();
 
       const lines: string[] = [
         `## Fund Trace: ${inc.title ?? "Unnamed Incident"}`,
         `**Incident ID:** ${inc.id}`,
         `**Chain:** ${inc.chain}`,
-        `**Status:** ${inc.status.toUpperCase()}`,
-        `**Attacker:** ${truncateAddr(inc.attacker_address)}`,
-        `**Loss:** ${lossUsd ? `$${(lossUsd / 1_000_000).toFixed(2)}M` : "Unknown"}`,
-        `**Date:** ${inc.created_at.slice(0, 10)}`,
+        `**Status:** ${status.toUpperCase()}`,
+        `**Attacker:** ${inc.attacker_address}`,
+        `**Loss:** ${usd(lossUsd)}`,
+        `**Date:** ${date.slice(0, 10)}`,
       ];
+      if (inc.incident_type) lines.push(`**Type:** ${inc.incident_type}`);
+      if (inc.risk_score != null) lines.push(`**Risk Score:** ${inc.risk_score}/100`);
+      if (inc.source) lines.push(`**Source:** ${inc.source}`);
+      if (inc.updated_at) lines.push(`**Last traced:** ${inc.updated_at.slice(0, 10)}`);
 
-      if (inc.status.toLowerCase() === "traced") {
-        lines.push(`\n✅ Trace complete — view full flow graph and counterparty exposure on ChainHint.`);
-      } else if (inc.status.toLowerCase() === "analyzing") {
-        lines.push(`\n⏳ Trace in progress...`);
-      } else {
-        lines.push(`\n⚠️ Status: ${inc.status}`);
+      const edges = inc.flow_graph?.edges ?? [];
+      const nodes = inc.flow_graph?.nodes ?? [];
+      if (edges.length) {
+        const maxDepth = edges.reduce((m, e) => Math.max(m, e.depth ?? 0), 0);
+        lines.push(``, `### Trace Graph`);
+        lines.push(`**Hops traced:** ${maxDepth} · **Addresses:** ${nodes.length} · **Transfers:** ${edges.length}`);
       }
 
-      lines.push(`\n🔗 View full trace: https://chainhint.com/incident/${inc.id}`);
+      const endpoints = inc.endpoints ?? [];
+      if (endpoints.length) {
+        const byType = new Map<string, { usd: number; n: number; entities: Map<string, number> }>();
+        for (const e of endpoints) {
+          const t = e.type ?? "unknown";
+          const b = byType.get(t) ?? { usd: 0, n: 0, entities: new Map() };
+          b.usd += e.amount_usd ?? 0;
+          b.n += 1;
+          const name = e.entity_name ?? e.entity;
+          if (name) b.entities.set(name, (b.entities.get(name) ?? 0) + (e.amount_usd ?? 0));
+          byType.set(t, b);
+        }
+        const totalUsd = [...byType.values()].reduce((s, b) => s + b.usd, 0);
+        lines.push(``, `### Where the funds went (${endpoints.length} endpoints, ${usd(totalUsd)} tracked)`);
+        for (const [t, b] of [...byType.entries()].sort((a, b) => b[1].usd - a[1].usd)) {
+          const top = [...b.entities.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n]) => n);
+          const pct = totalUsd > 0 ? ` (${((b.usd / totalUsd) * 100).toFixed(1)}%)` : "";
+          lines.push(`- **${t}**: ${usd(b.usd)}${pct} across ${b.n} address(es)${top.length ? ` — ${top.join(", ")}` : ""}`);
+        }
+        const topEndpoints = [...endpoints]
+          .filter((e) => (e.amount_usd ?? 0) > 0)
+          .sort((a, b) => (b.amount_usd ?? 0) - (a.amount_usd ?? 0))
+          .slice(0, 5);
+        if (topEndpoints.length) {
+          lines.push(`**Largest endpoints:**`);
+          for (const e of topEndpoints) {
+            const name = e.entity_name ?? e.entity ?? "unattributed";
+            lines.push(`- ${truncateAddr(e.address)} — ${name} (${e.type ?? "unknown"}): ${usd(e.amount_usd)}`);
+          }
+        }
+      }
+
+      const cx = inc.counterparty_exposure;
+      if (cx?.risk?.level || cx?.outflow?.length || cx?.inflow?.length) {
+        lines.push(``, `### Attacker Counterparty Exposure`);
+        if (cx.risk?.level) {
+          lines.push(`**Exposure Risk:** ${cx.risk.level.toUpperCase()} (${cx.risk.pct}%)`);
+          if (cx.risk.details?.length) lines.push(...cx.risk.details.slice(0, 5).map((s) => `- ${s}`));
+        }
+        lines.push(...formatExposure("Outflow by category", cx.outflow));
+        lines.push(...formatExposure("Inflow by category", cx.inflow));
+      }
+
+      lines.push(``);
+      if (status === "traced") {
+        lines.push(`✅ Trace complete — full flow graph and counterparty exposure on ChainHint.`);
+      } else if (status === "analyzing") {
+        lines.push(`⏳ Trace in progress...`);
+      } else {
+        lines.push(`⚠️ Status: ${status}`);
+      }
+
+      lines.push(`🔗 View full trace: https://chainhint.com/incident/${inc.id}`);
       lines.push(`*Powered by ChainHint — chainhint.com*`);
 
       return { content: [{ type: "text", text: lines.join("\n") }] };

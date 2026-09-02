@@ -6,14 +6,14 @@ Crypto risk intelligence for Claude Desktop, Cursor, and any MCP-compatible AI.
 
 | Tool | Description |
 |------|-------------|
-| `check_wallet_risk` | Risk score, entity label, sanctions check for any wallet |
-| `lookup_address` | Full address details — entity, category, tx history |
-| `get_trace_status` | Fund trace status for hack incidents — where did the money go? |
+| `check_wallet_risk` | Fast risk score, entity, labels, sanctions hit (54M+ labeled addresses). **Needs API key** |
+| `lookup_address` | Deep address report — entity, risk factors, GoPlus flags, counterparty exposure, balance. No key needed |
+| `get_trace_status` | Fund-trace summary for a public hack incident — hops, endpoints by type (exchange/mixer/bridge/defi), exposure. No key needed |
 
 ## Requirements
 
 - Node.js 18+
-- ChainHint Agency plan API key (`ch_live_...`) from [chainhint.com/settings](https://chainhint.com/settings)
+- Optional: ChainHint Agency plan API key (`ch_live_...`) from [chainhint.com/settings](https://chainhint.com/settings) — only `check_wallet_risk` needs it
 
 ## Install
 
@@ -75,9 +75,9 @@ npm run dev
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `CHAINHINT_API_KEY` | ✅ | API key from chainhint.com (Agency plan) |
+| `CHAINHINT_API_KEY` | — | API key from chainhint.com (Agency plan). Required only for `check_wallet_risk` |
 | `CHAINHINT_API_URL` | — | Override API base URL (default: production) |
-| `CHAINHINT_SUPABASE_ANON_KEY` | — | For get_trace_status (public incidents) |
+| `CHAINHINT_SUPABASE_ANON_KEY` | — | Override anon key for get_trace_status (public incidents) |
 
 ## Example prompts
 
