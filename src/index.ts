@@ -123,11 +123,64 @@ function truncateAddr(addr: string): string {
   return addr.length > 12 ? `${addr.slice(0, 8)}...${addr.slice(-6)}` : addr;
 }
 
+// Same tiers as the site's formatUsd (src/lib/utils.ts): $1.4B, $115.0M, $629.4K.
+// KIR-45: this used to stop at "M" and print "$1409.97M" for the Bybit loss.
 function usd(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "Unknown";
-  if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (Math.abs(n) >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
-  return `$${n.toFixed(2)}`;
+  const abs = Math.abs(n);
+  if (abs >= 1e15) return "Unknown";
+  if (abs >= 1e12) return `$${(n / 1e12).toFixed(1)}T`;
+  if (abs >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
+  if (abs >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
+  if (abs >= 1e3) return `$${(n / 1e3).toFixed(1)}K`;
+  return `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+}
+
+// Hop count as the site counts it (src/lib/traceReconciliation deriveDepthMap):
+// shortest-path depth from the attacker over the edges, max over reachable
+// nodes — NOT max(edge.depth), which the tracer assigns as it walks (Bybit:
+// 6 vs the site's 5).
+function hopCount(edges: { from?: string; to: string }[], attacker: string | null | undefined): number {
+  const src = (attacker ?? "").toLowerCase();
+  if (!src || !edges.length) return 0;
+  const out = new Map<string, string[]>();
+  for (const e of edges) {
+    const f = (e.from ?? "").toLowerCase(), t = (e.to ?? "").toLowerCase();
+    if (!f || !t) continue;
+    (out.get(f) ?? out.set(f, []).get(f)!).push(t);
+  }
+  const depth = new Map<string, number>([[src, 0]]);
+  const queue = [src];
+  let max = 0;
+  while (queue.length) {
+    const a = queue.shift()!;
+    const d = depth.get(a)!;
+    for (const b of out.get(a) ?? []) {
+      if (depth.has(b)) continue;
+      depth.set(b, d + 1);
+      if (d + 1 > max) max = d + 1;
+      queue.push(b);
+    }
+  }
+  return max;
+}
+
+// Endpoint buckets as the site's Flow Summary (src/lib/flowSummary.ts): the
+// entity CATEGORY decides — an attacker wallet retyped "exchange" is not an
+// exchange, a no-KYC swap is not a freeze target.
+const ATTACKER_CATEGORIES = new Set(["hacker", "scam", "exploit"]);
+const NO_KYC_TOKENS = ["changenow", "fixedfloat", "simpleswap", "sideshift", "stealthex", "changelly", "letsexchange", "godex", "swapuz", "exolix", "exch.cx", "exch.sc", "exch.net", "ff.io"];
+function endpointBucket(category: string | null | undefined, type: string | null | undefined, name: string | null | undefined): string {
+  const c = (category ?? "").toLowerCase();
+  const t = (type ?? "").toLowerCase();
+  const n = (name ?? "").toLowerCase().replace(/[\s_-]/g, "");
+  if (ATTACKER_CATEGORIES.has(c)) return "attacker-attributed";
+  if (c === "sanctioned" || c === "high_risk_exchange" || NO_KYC_TOKENS.some((k) => n.includes(k.replace(/[\s_-]/g, "")))) return "risky";
+  if (c === "mixer" || t === "mixer") return "mixer";
+  if (c === "bridge" || t === "bridge") return "bridge";
+  if (c === "exchange" || t === "exchange") return "exchange";
+  if (c === "defi" || c === "dex" || t === "defi" || t === "dex") return "defi";
+  return "unknown";
 }
 
 // EVM addresses are case-insensitive and stored lowercase; base58 chains
@@ -439,7 +492,7 @@ server.tool(
         updated_at: string | null;
         source: string | null;
         endpoints: Endpoint[] | null;
-        flow_graph: { nodes?: unknown[]; edges?: Array<{ depth?: number }> } | null;
+        flow_graph: { nodes?: unknown[]; edges?: Array<{ depth?: number; from?: string; to: string }> } | null;
         counterparty_exposure: {
           risk?: { level: string; pct: number; details?: string[] };
           inflow?: ExposureBucket[];
@@ -459,7 +512,8 @@ server.tool(
       }
 
       const inc = rows[0];
-      const lossUsd = inc.amount_usd ?? inc.estimated_loss_usd;
+      // The site's figure: stored estimated_loss_usd first (TraceFacts.displayedLossUsd), amount_usd as fallback.
+      const lossUsd = inc.estimated_loss_usd ?? inc.amount_usd;
       const date = inc.display_date ?? inc.hack_date ?? inc.created_at;
       const status = (inc.status ?? "unknown").toLowerCase();
 
@@ -480,16 +534,16 @@ server.tool(
       const edges = inc.flow_graph?.edges ?? [];
       const nodes = inc.flow_graph?.nodes ?? [];
       if (edges.length) {
-        const maxDepth = edges.reduce((m, e) => Math.max(m, e.depth ?? 0), 0);
+        const hops = hopCount(edges, inc.attacker_address);
         lines.push(``, `### Trace Graph`);
-        lines.push(`**Hops traced:** ${maxDepth} · **Addresses:** ${nodes.length} · **Transfers:** ${edges.length}`);
+        lines.push(`**Hops traced:** ${hops} · **Addresses:** ${nodes.length} · **Transfers:** ${edges.length}`);
       }
 
       const endpoints = inc.endpoints ?? [];
       if (endpoints.length) {
         const byType = new Map<string, { usd: number; n: number; entities: Map<string, number> }>();
         for (const e of endpoints) {
-          const t = e.type ?? "unknown";
+          const t = endpointBucket(e.entity_category, e.type, e.entity_name ?? e.entity);
           const b = byType.get(t) ?? { usd: 0, n: 0, entities: new Map() };
           b.usd += e.amount_usd ?? 0;
           b.n += 1;
@@ -498,7 +552,8 @@ server.tool(
           byType.set(t, b);
         }
         const totalUsd = [...byType.values()].reduce((s, b) => s + b.usd, 0);
-        lines.push(``, `### Where the funds went (${endpoints.length} endpoints, ${usd(totalUsd)} tracked)`);
+        // Σ endpoint amounts counts every hop's inflow (multi-hop), so it is larger than the loss — name the base.
+        lines.push(``, `### Where the funds went (${endpoints.length} endpoints, ${usd(totalUsd)} observed at endpoints — not the loss figure)`);
         for (const [t, b] of [...byType.entries()].sort((a, b) => b[1].usd - a[1].usd)) {
           const top = [...b.entities.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n]) => n);
           const pct = totalUsd > 0 ? ` (${((b.usd / totalUsd) * 100).toFixed(1)}%)` : "";
@@ -512,7 +567,7 @@ server.tool(
           lines.push(`**Largest endpoints:**`);
           for (const e of topEndpoints) {
             const name = e.entity_name ?? e.entity ?? "unattributed";
-            lines.push(`- ${truncateAddr(e.address)} — ${name} (${e.type ?? "unknown"}): ${usd(e.amount_usd)}`);
+            lines.push(`- ${truncateAddr(e.address)} — ${name} (${endpointBucket(e.entity_category, e.type, e.entity_name ?? e.entity)}): ${usd(e.amount_usd)}`);
           }
         }
       }
