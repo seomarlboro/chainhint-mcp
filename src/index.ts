@@ -247,7 +247,7 @@ server.tool(
   "Fast risk check for a crypto wallet address against ChainHint's 54M+ labeled address database (12 chains). Returns risk score 0-100, risk level (clean/low/medium/high/critical/sanctioned), entity name and category, labels, and sanctions hit. Use it to decide allow/warn/block before paying or interacting with a counterparty wallet. Free: 3 checks per day without a key; CHAINHINT_API_KEY (Agency plan) lifts it to 10,000/day. For a deeper report (risk factors, exposure, balance) use lookup_address.",
   {
     address: z.string().describe("Wallet address to check (EVM 0x..., Bitcoin, or Solana)"),
-    chain: z.string().optional().describe("Blockchain: ethereum, bsc, polygon, arbitrum, optimism, base, avalanche, solana, bitcoin (default: auto-detect from address format)"),
+    chain: z.string().optional().describe("Blockchain: ethereum, bsc, polygon, arbitrum, optimism, base, avalanche, gnosis, bitcoin, solana, tron, ton (default: auto-detect from address format; the response chain is the address family for bitcoin/solana/tron/ton)"),
   },
   async ({ address, chain }) => {
     try {
@@ -334,7 +334,7 @@ server.tool(
   "Detailed lookup of a blockchain address: entity attribution, risk score with the factors behind it, sanctions and GoPlus security flags, counterparty exposure (where funds came from / went to, by category with named entities), balance, token count and transaction count. Free: 10 lookups per day without a key; CHAINHINT_API_KEY lifts it. Supports EVM chains, Bitcoin, Solana, TRON, TON.",
   {
     address: z.string().describe("Blockchain address to look up"),
-    chain: z.string().optional().describe("Blockchain (ethereum, bsc, polygon, arbitrum, optimism, base, avalanche, solana, bitcoin, tron, ton)"),
+    chain: z.string().optional().describe("Blockchain (ethereum, bsc, polygon, arbitrum, optimism, base, avalanche, gnosis, bitcoin, solana, tron, ton)"),
   },
   async ({ address, chain }) => {
     try {
@@ -492,7 +492,7 @@ server.tool(
         updated_at: string | null;
         source: string | null;
         endpoints: Endpoint[] | null;
-        flow_graph: { nodes?: unknown[]; edges?: Array<{ depth?: number; from?: string; to: string }> } | null;
+        flow_graph: { nodes?: unknown[]; edges?: Array<{ depth?: number; from?: string; to: string; amount_usd?: number | null }> } | null;
         counterparty_exposure: {
           risk?: { level: string; pct: number; details?: string[] };
           inflow?: ExposureBucket[];
@@ -540,6 +540,11 @@ server.tool(
       }
 
       const endpoints = inc.endpoints ?? [];
+      // A graph none of whose edges carries amount_usd was never valued (legacy
+      // Bitcoin rows): endpoint.amount_usd then holds the raw asset quantity and
+      // must not be printed as dollars (multi-chain audit 2026-09-03).
+      const graphPriced = edges.length === 0 || edges.some((e) => e.amount_usd != null && Number(e.amount_usd) > 0);
+      const money = (n: number | null | undefined) => (graphPriced ? usd(n) : "unpriced");
       if (endpoints.length) {
         const byType = new Map<string, { usd: number; n: number; entities: Map<string, number> }>();
         for (const e of endpoints) {
@@ -553,11 +558,11 @@ server.tool(
         }
         const totalUsd = [...byType.values()].reduce((s, b) => s + b.usd, 0);
         // Σ endpoint amounts counts every hop's inflow (multi-hop), so it is larger than the loss — name the base.
-        lines.push(``, `### Where the funds went (${endpoints.length} endpoints, ${usd(totalUsd)} observed at endpoints — not the loss figure)`);
+        lines.push(``, `### Where the funds went (${endpoints.length} endpoints, ${graphPriced ? `${usd(totalUsd)} observed at endpoints — not the loss figure` : "this trace carries no USD valuation"})`);
         for (const [t, b] of [...byType.entries()].sort((a, b) => b[1].usd - a[1].usd)) {
           const top = [...b.entities.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n]) => n);
           const pct = totalUsd > 0 ? ` (${((b.usd / totalUsd) * 100).toFixed(1)}%)` : "";
-          lines.push(`- **${t}**: ${usd(b.usd)}${pct} across ${b.n} address(es)${top.length ? ` — ${top.join(", ")}` : ""}`);
+          lines.push(`- **${t}**: ${money(b.usd)}${graphPriced ? pct : ""} across ${b.n} address(es)${top.length ? ` — ${top.join(", ")}` : ""}`);
         }
         const topEndpoints = [...endpoints]
           .filter((e) => (e.amount_usd ?? 0) > 0)
@@ -567,7 +572,7 @@ server.tool(
           lines.push(`**Largest endpoints:**`);
           for (const e of topEndpoints) {
             const name = e.entity_name ?? e.entity ?? "unattributed";
-            lines.push(`- ${truncateAddr(e.address)} — ${name} (${endpointBucket(e.entity_category, e.type, e.entity_name ?? e.entity)}): ${usd(e.amount_usd)}`);
+            lines.push(`- ${truncateAddr(e.address)} — ${name} (${endpointBucket(e.entity_category, e.type, e.entity_name ?? e.entity)}): ${money(e.amount_usd)}`);
           }
         }
       }
