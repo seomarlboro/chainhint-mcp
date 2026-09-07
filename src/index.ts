@@ -268,7 +268,18 @@ server.tool(
         found_in_db: boolean;
         sources: string[];
         checked_at: string;
-        tier?: "free" | "api_key";
+        tier?: "free" | "api_key" | "x402";
+        // Agent-infrastructure overlay: registry membership of known
+        // autonomous-agent infra (launchpads, factories, facilitators, agent
+        // wallets). A registry fact, never a behavioural classification.
+        agent?: {
+          is_agent: boolean;
+          kind: string;
+          framework: string;
+          label: string;
+          summary: string;
+          source_url: string;
+        } | null;
       }>("/wallet-reputation", params);
 
       const lines: string[] = [
@@ -312,6 +323,12 @@ server.tool(
       }
 
       if (d.labels?.length) lines.push(`**Labels:** ${[...new Set(d.labels)].join(", ")}`);
+      if (d.agent) {
+        // Registry fact (agent launchpad / factory / facilitator / wallet), not
+        // a behavioural classification — mirrors the API's honest wording.
+        const cap = d.agent.summary.charAt(0).toUpperCase() + d.agent.summary.slice(1);
+        lines.push(`🤖 **${cap}** — a registry fact, not a behavioural classification.`);
+      }
       if (d.is_contract != null) lines.push(`**Type:** ${d.is_contract ? "Smart Contract" : "EOA (wallet)"}`);
       lines.push(`**In ChainHint DB:** ${d.found_in_db ? "yes" : "no"}${d.sources?.length ? ` (sources: ${d.sources.join(", ")})` : ""}`);
       lines.push(`**Checked at:** ${d.checked_at}`);
@@ -367,6 +384,14 @@ server.tool(
           };
           risk_status?: string;
           degraded?: unknown;
+          agent?: {
+            is_agent: boolean;
+            kind: string;
+            framework: string;
+            label: string;
+            summary: string;
+            source_url: string;
+          } | null;
         };
         error?: string;
       }>("/address-lookup", params);
@@ -389,6 +414,11 @@ server.tool(
         lines.push(`**Entity:** ${d.entity.name} (${d.entity.category}${sub}${conf})`);
       } else {
         lines.push(`**Entity:** Unknown / unlabeled`);
+      }
+
+      if (d.agent) {
+        const cap = d.agent.summary.charAt(0).toUpperCase() + d.agent.summary.slice(1);
+        lines.push(`🤖 **${cap}** — a registry fact, not a behavioural classification.`);
       }
       if (d.labels?.length) lines.push(`**Labels:** ${[...new Set(d.labels)].join(", ")}`);
 
