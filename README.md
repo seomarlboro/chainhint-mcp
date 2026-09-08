@@ -86,6 +86,8 @@ Add an Agency key to the server entry (any client):
 Free tier: 2 of 3 checks left today — set CHAINHINT_API_KEY (Agency plan, https://chainhint.com/pricing) for 10,000/day.
 ```
 
+When the address is in ChainHint's agent-infrastructure registry (agent-token launchpads, deployer factories, routers, payment facilitators, known agent wallets), the report adds an `🤖` line, e.g. *Known agent infrastructure: Virtuals launchpad* — a registry fact you can verify at its source, not a behavioural classification and not part of the risk score.
+
 ## Development (no build step)
 
 ```bash
