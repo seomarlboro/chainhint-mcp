@@ -26,7 +26,7 @@ const BASE_URL = process.env.CHAINHINT_API_URL ?? "https://kjiwfwymnuzxriokhcjk.
 const SUPABASE_URL = process.env.CHAINHINT_SUPABASE_URL ?? "https://kjiwfwymnuzxriokhcjk.supabase.co";
 const SUPABASE_ANON_KEY = process.env.CHAINHINT_SUPABASE_ANON_KEY ?? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtqaXdmd3ltbnV6eHJpb2toY2prIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3MzkxODgsImV4cCI6MjA4ODMxNTE4OH0.VqzzF_jI8zF072cbjWEDbYo3PnMDlIPy621iWkXEqyo";
 
-const VERSION = "1.1.0";
+const VERSION = "1.3.1";
 const USER_AGENT = `chainhint-mcp/${VERSION}`;
 const FREE_CHECKS_PER_DAY = 3;
 const UPGRADE_HINT = "set CHAINHINT_API_KEY (Agency plan, https://chainhint.com/pricing) for 10,000/day";
@@ -217,13 +217,36 @@ type PublicIncidentRow = {
   amount_usd: number | null;
   estimated_loss_usd: number | null;
   risk_score: number | null;
+  source: string | null;
+  attacker_address_source: string | null;
 };
+
+/**
+ * Same rule as chainhint.com (src/lib/attackerAttribution.ts): an address is
+ * "the attacker" only when the attribution was checked against the exploit
+ * transaction (attacker_address_source = analyst_verified). Everything else is
+ * a report — shown as one, and never as a HIGH-risk verdict.
+ */
+function attackerAttribution(inc: {
+  attacker_address?: string | null;
+  attacker_address_source?: string | null;
+  source?: string | null;
+}): { verified: boolean; label: string } {
+  if (!inc.attacker_address) return { verified: false, label: "Attacker not identified" };
+  if (inc.attacker_address_source === "analyst_verified") return { verified: true, label: "Attacker" };
+  return {
+    verified: false,
+    label: inc.source === "defillama"
+      ? "Reported attacker (DeFiLlama), unverified"
+      : "Reported attacker (user-provided), unverified",
+  };
+}
 
 /** Public incident whose attacker_address matches, or null (errors swallowed — best effort). */
 async function findPublicIncidentByAttacker(address: string): Promise<PublicIncidentRow | null> {
   try {
     const rows = await supabaseGet("public_incidents_view", {
-      select: "id,title,chain,amount_usd,estimated_loss_usd,risk_score",
+      select: "id,title,chain,amount_usd,estimated_loss_usd,risk_score,source,attacker_address_source",
       attacker_address: `eq.${normalizeAddr(address)}`,
       limit: "1",
     }) as PublicIncidentRow[];
@@ -298,8 +321,12 @@ server.tool(
         lines.push(`**Risk:** ⚪ NO DATA — address is not in ChainHint's labeled database. This is not evidence it is clean.`);
         const inc = await findPublicIncidentByAttacker(d.address);
         if (inc) {
+          const attribution = attackerAttribution({ attacker_address: d.address, ...inc });
+          const where = `${inc.title ?? "Unnamed incident"} (${inc.chain}, loss ${usd(inc.amount_usd ?? inc.estimated_loss_usd)}${inc.risk_score != null ? `, incident risk ${inc.risk_score}/100` : ""})`;
           lines.push(
-            `⚠️ **Known attacker in a public hack incident:** ${inc.title ?? "Unnamed incident"} (${inc.chain}, loss ${usd(inc.amount_usd ?? inc.estimated_loss_usd)}${inc.risk_score != null ? `, incident risk ${inc.risk_score}/100` : ""}). Treat as HIGH risk.`,
+            attribution.verified
+              ? `⚠️ **Verified attacker in a public hack incident:** ${where}. The attribution was checked against the exploit transaction. Treat as HIGH risk.`
+              : `ℹ️ **${attribution.label}, in a public hack incident:** ${where}. This attribution has not been verified against the exploit transaction — treat it as a lead to check, not as a risk verdict.`,
             `🔗 https://chainhint.com/incident/${inc.id}`,
           );
         }
@@ -495,7 +522,7 @@ server.tool(
       // public_incidents_view is the canonical anonymous read path (SECURITY DEFINER,
       // exposes only is_public rows and only public-safe columns).
       const queryParams: Record<string, string> = {
-        select: "id,title,status,chain,attacker_address,amount_usd,estimated_loss_usd,risk_score,incident_type,hack_date,display_date,created_at,updated_at,source,endpoints,flow_graph,counterparty_exposure",
+        select: "id,title,status,chain,attacker_address,attacker_address_source,amount_usd,estimated_loss_usd,risk_score,incident_type,hack_date,display_date,created_at,updated_at,source,endpoints,flow_graph,counterparty_exposure",
         limit: "1",
         order: "created_at.desc",
       };
@@ -511,7 +538,8 @@ server.tool(
         title: string | null;
         status: string;
         chain: string;
-        attacker_address: string;
+        attacker_address: string | null;
+        attacker_address_source: string | null;
         amount_usd: number | null;
         estimated_loss_usd: number | null;
         risk_score: number | null;
@@ -552,7 +580,7 @@ server.tool(
         `**Incident ID:** ${inc.id}`,
         `**Chain:** ${inc.chain}`,
         `**Status:** ${status.toUpperCase()}`,
-        `**Attacker:** ${inc.attacker_address}`,
+        `**${attackerAttribution(inc).label}:** ${inc.attacker_address ?? "—"}`,
         `**Loss:** ${usd(lossUsd)}`,
         `**Date:** ${date.slice(0, 10)}`,
       ];
