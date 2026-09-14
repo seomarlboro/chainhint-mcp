@@ -19,6 +19,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { apiErrorMessage, formatRiskLevel, lookupRiskLines, traceStatusLine } from "./verdicts.js";
+import { evidenceLines, type EvidenceItem } from "./evidence.js";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -27,7 +28,7 @@ const BASE_URL = process.env.CHAINHINT_API_URL ?? "https://kjiwfwymnuzxriokhcjk.
 const SUPABASE_URL = process.env.CHAINHINT_SUPABASE_URL ?? "https://kjiwfwymnuzxriokhcjk.supabase.co";
 const SUPABASE_ANON_KEY = process.env.CHAINHINT_SUPABASE_ANON_KEY ?? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtqaXdmd3ltbnV6eHJpb2toY2prIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3MzkxODgsImV4cCI6MjA4ODMxNTE4OH0.VqzzF_jI8zF072cbjWEDbYo3PnMDlIPy621iWkXEqyo";
 
-const VERSION = "1.3.2";
+const VERSION = "1.3.3";
 const USER_AGENT = `chainhint-mcp/${VERSION}`;
 const FREE_CHECKS_PER_DAY = 3;
 const UPGRADE_HINT = "set CHAINHINT_API_KEY (Agency plan, https://chainhint.com/pricing) for 10,000/day";
@@ -280,6 +281,8 @@ server.tool(
         found_in_db: boolean;
         sources: string[];
         checked_at: string;
+        // Migration 129: what each source establishes (designation, attribution, freeze…).
+        evidence?: EvidenceItem[] | null;
         tier?: "free" | "api_key" | "x402";
         // Agent-infrastructure overlay: registry membership of known
         // autonomous-agent infra (launchpads, factories, facilitators, agent
@@ -324,9 +327,13 @@ server.tool(
         lines.push(`**Risk Score:** ${d.risk_score}/100 — **${(d.risk_level ?? formatRiskLevel(d.risk_score)).toUpperCase()}**`);
       }
 
-      if (d.sanctions?.hit) {
-        lines.push(`⛔ **SANCTIONED / OFAC-linked**`);
+      // sanctions.hit comes only from a sanctions designation (API since migration 129);
+      // the evidence lines say which authority and that other classes are not sanctions.
+      const walletEvidence = evidenceLines(d.evidence);
+      if (d.sanctions?.hit && !walletEvidence.some((l) => l.startsWith("- ⛔"))) {
+        lines.push(`⛔ **SANCTIONED**`);
       }
+      if (walletEvidence.length) lines.push(`**Evidence:**`, ...walletEvidence);
 
       if (d.entity?.name) {
         const sub = d.entity.subcategory ? ` / ${d.entity.subcategory}` : "";
@@ -402,6 +409,7 @@ server.tool(
           // "scored" | "insufficient_data" | "unavailable" — read by lookupRiskLines.
           risk_status?: string;
           data_availability?: { transfers?: string; provider?: string; reason?: string; detail?: string };
+          evidence?: EvidenceItem[] | null;
           degraded?: unknown;
           agent?: {
             is_agent: boolean;
@@ -443,6 +451,8 @@ server.tool(
 
       // Never a score or "CLEAN" when there was nothing to score (verdicts.ts).
       lines.push(...lookupRiskLines(d));
+      const lookupEvidence = evidenceLines(d.evidence);
+      if (lookupEvidence.length) lines.push(`**Evidence:**`, ...lookupEvidence);
 
       const sanctionIds = d.sanctions?.identifications ?? [];
       if (sanctionIds.length) {
