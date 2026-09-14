@@ -18,6 +18,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { apiErrorMessage, formatRiskLevel, lookupRiskLines, traceStatusLine } from "./verdicts.js";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -26,7 +27,7 @@ const BASE_URL = process.env.CHAINHINT_API_URL ?? "https://kjiwfwymnuzxriokhcjk.
 const SUPABASE_URL = process.env.CHAINHINT_SUPABASE_URL ?? "https://kjiwfwymnuzxriokhcjk.supabase.co";
 const SUPABASE_ANON_KEY = process.env.CHAINHINT_SUPABASE_ANON_KEY ?? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtqaXdmd3ltbnV6eHJpb2toY2prIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3MzkxODgsImV4cCI6MjA4ODMxNTE4OH0.VqzzF_jI8zF072cbjWEDbYo3PnMDlIPy621iWkXEqyo";
 
-const VERSION = "1.3.1";
+const VERSION = "1.3.2";
 const USER_AGENT = `chainhint-mcp/${VERSION}`;
 const FREE_CHECKS_PER_DAY = 3;
 const UPGRADE_HINT = "set CHAINHINT_API_KEY (Agency plan, https://chainhint.com/pricing) for 10,000/day";
@@ -66,11 +67,7 @@ async function apiGet<T = unknown>(
     reset_at?: number;
   };
   if (!res.ok) {
-    let msg = body?.error ?? `HTTP ${res.status}: ${url.toString()}`;
-    if (res.status === 429 && body?.reset_at) {
-      msg += ` Resets at ${new Date(body.reset_at * 1000).toISOString()}.`;
-    }
-    throw new Error(msg);
+    throw new Error(apiErrorMessage(res.status, body?.error, url.toString(), body?.reset_at));
   }
   return { body, headers: res.headers };
 }
@@ -110,14 +107,6 @@ async function supabaseGet(table: string, params: Record<string, string>): Promi
 }
 
 // ── Format helpers ────────────────────────────────────────────────────────────
-
-function formatRiskLevel(score: number): string {
-  if (score >= 90) return "CRITICAL";
-  if (score >= 70) return "HIGH";
-  if (score >= 40) return "MEDIUM";
-  if (score >= 10) return "LOW";
-  return "CLEAN";
-}
 
 function truncateAddr(addr: string): string {
   return addr.length > 12 ? `${addr.slice(0, 8)}...${addr.slice(-6)}` : addr;
@@ -408,8 +397,11 @@ server.tool(
             counterparties_identified?: number;
             risk?: { level: string; pct: number; details?: string[] };
             window?: string;
+            data_unavailable?: { provider?: string; reason?: string } | null;
           };
+          // "scored" | "insufficient_data" | "unavailable" — read by lookupRiskLines.
           risk_status?: string;
+          data_availability?: { transfers?: string; provider?: string; reason?: string; detail?: string };
           degraded?: unknown;
           agent?: {
             is_agent: boolean;
@@ -449,13 +441,8 @@ server.tool(
       }
       if (d.labels?.length) lines.push(`**Labels:** ${[...new Set(d.labels)].join(", ")}`);
 
-      if (d.risk) {
-        const level = (d.risk.level ?? formatRiskLevel(d.risk.score)).toUpperCase();
-        lines.push(`**Risk Score:** ${d.risk.score}/100 — **${level}**`);
-        const factors = Object.entries(d.risk.factors ?? {}).filter(([, v]) => v).map(([k]) => k);
-        if (factors.length) lines.push(`**Risk Factors:** ${factors.join(", ")}`);
-        if (d.risk.details?.length) lines.push(`**Risk Details:** ${d.risk.details.join("; ")}`);
-      }
+      // Never a score or "CLEAN" when there was nothing to score (verdicts.ts).
+      lines.push(...lookupRiskLines(d));
 
       const sanctionIds = d.sanctions?.identifications ?? [];
       if (sanctionIds.length) {
@@ -647,13 +634,8 @@ server.tool(
       }
 
       lines.push(``);
-      if (status === "traced") {
-        lines.push(`✅ Trace complete — full flow graph and counterparty exposure on ChainHint.`);
-      } else if (status === "analyzing") {
-        lines.push(`⏳ Trace in progress...`);
-      } else {
-        lines.push(`⚠️ Status: ${status}`);
-      }
+      // "✅ Trace complete" only for a trace that holds transfers (verdicts.ts).
+      lines.push(traceStatusLine({ status, chain: inc.chain, attacker_address: inc.attacker_address, edgeCount: edges.length }));
 
       lines.push(`🔗 View full trace: https://chainhint.com/incident/${inc.id}`);
       lines.push(`*Powered by ChainHint — chainhint.com*`);
