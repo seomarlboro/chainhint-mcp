@@ -104,6 +104,8 @@ npm run dev
 
 ## Environment Variables
 
+> **Upgrade to 1.4.0.** Versions before 1.4.0 send ChainHint's legacy Supabase anon key, which is being retired: `get_trace_status` on those versions will return 401. `check_wallet_risk` and `lookup_address` are unaffected. `npx chainhint-mcp@latest` picks up 1.4.0.
+
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `CHAINHINT_API_KEY` | — | Agency plan key from chainhint.com. Lifts the free limits (3 checks + 10 lookups per day) to 10,000 / day |

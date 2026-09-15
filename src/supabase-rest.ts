@@ -22,3 +22,29 @@ export function resolveSupabaseKey(
 export function supabaseRestHeaders(key: string): Record<string, string> {
   return { apikey: key, Accept: "application/json" };
 }
+
+/** Marker the default carries until the owner pastes the real publishable key. */
+export const PUBLISHABLE_KEY_PLACEHOLDER = "sb_publishable_PASTE_BEFORE_PUBLISH";
+
+/**
+ * ChainHint's Supabase publishable key (sb_publishable_…) — public by design, the
+ * same value the chainhint.com bundle ships. Paste it here before `npm publish`;
+ * `prepublishOnly` (scripts/check-publish.mjs) refuses to publish while this is the
+ * placeholder, a JWT or anything that is not a publishable key.
+ */
+export const DEFAULT_SUPABASE_KEY: string = PUBLISHABLE_KEY_PLACEHOLDER;
+
+/** Why `key` must not be the published default, or null when it is a real publishable key. */
+export function publishKeyProblem(key: string): string | null {
+  const k = (key ?? "").trim();
+  if (k === PUBLISHABLE_KEY_PLACEHOLDER) return "the default key is still the placeholder";
+  if (k.startsWith("eyJ")) return "the default key is a JWT (legacy anon key) — use the sb_publishable_ key";
+  if (k.startsWith("sb_secret_")) return "the default key is a SECRET key — never ship it";
+  if (!/^sb_publishable_[A-Za-z0-9_-]{16,}$/.test(k)) return "the default key does not look like an sb_publishable_ key";
+  return null;
+}
+
+/** true when REST reads can run: an override or a real default. */
+export function isSupabaseKeyConfigured(key: string): boolean {
+  return publishKeyProblem(key) === null || ((key ?? "").trim() !== "" && (key ?? "").trim() !== PUBLISHABLE_KEY_PLACEHOLDER && !(key ?? "").trim().startsWith("eyJ"));
+}

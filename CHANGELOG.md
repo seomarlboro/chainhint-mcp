@@ -4,6 +4,7 @@
 
 - **Supabase publishable key (KIR-81):** `get_trace_status` reads public incidents with the project's publishable key, sent **only** in the `apikey` header — never as `Authorization: Bearer`. New override `CHAINHINT_SUPABASE_PUBLISHABLE_KEY`; the old `CHAINHINT_SUPABASE_ANON_KEY` is still honoured.
 - **Upgrade required:** versions before 1.4.0 send the legacy anon JWT and will get 401 once ChainHint disables its legacy Supabase API keys. `check_wallet_risk` and `lookup_address` never sent that key and are unaffected.
+- No JWT ships in the package any more; `npm publish` is refused (prepublishOnly) unless the built-in default is a real `sb_publishable_` key.
 
 ## 1.3.4 — 2026-09-15
 

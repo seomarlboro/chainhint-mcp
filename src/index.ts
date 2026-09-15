@@ -23,16 +23,13 @@ import { evidenceLines, type EvidenceItem } from "./evidence.js";
 import { entityLine, type EntityBlock } from "./entity.js";
 import { ADDRESS_FORMS, normalizeAddr } from "./address.js";
 import { DATABASE_CANON } from "./canon.js";
-import { resolveSupabaseKey, supabaseRestHeaders } from "./supabase-rest.js";
+import { DEFAULT_SUPABASE_KEY, isSupabaseKeyConfigured, resolveSupabaseKey, supabaseRestHeaders } from "./supabase-rest.js";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const API_KEY = process.env.CHAINHINT_API_KEY;
 const BASE_URL = process.env.CHAINHINT_API_URL ?? "https://kjiwfwymnuzxriokhcjk.supabase.co/functions/v1";
 const SUPABASE_URL = process.env.CHAINHINT_SUPABASE_URL ?? "https://kjiwfwymnuzxriokhcjk.supabase.co";
-// TODO(KIR-81, before `npm publish` of 1.4.0): replace this default — still the
-// project's LEGACY anon JWT — with its sb_publishable_… key (public by design).
-const DEFAULT_SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtqaXdmd3ltbnV6eHJpb2toY2prIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3MzkxODgsImV4cCI6MjA4ODMxNTE4OH0.VqzzF_jI8zF072cbjWEDbYo3PnMDlIPy621iWkXEqyo";
 
 // Publishable key, sent only in `apikey` (never as a Bearer token) — see supabase-rest.ts.
 const SUPABASE_KEY = resolveSupabaseKey(process.env, DEFAULT_SUPABASE_KEY);
@@ -101,6 +98,9 @@ async function supabaseGet(table: string, params: Record<string, string>): Promi
     url.searchParams.set(k, v);
   }
 
+  if (!isSupabaseKeyConfigured(SUPABASE_KEY)) {
+    throw new Error("get_trace_status is not configured: no Supabase publishable key (set CHAINHINT_SUPABASE_PUBLISHABLE_KEY or upgrade chainhint-mcp)");
+  }
   const res = await fetch(url.toString(), {
     headers: supabaseRestHeaders(SUPABASE_KEY),
   });
