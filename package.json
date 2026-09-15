@@ -1,7 +1,7 @@
 {
   "name": "chainhint-mcp",
-  "version": "1.3.3",
-  "description": "ChainHint MCP server \u2014 crypto risk intelligence tools for Claude Desktop and Cursor",
+  "version": "1.3.4",
+  "description": "ChainHint MCP server — crypto risk intelligence tools for Claude Desktop and Cursor",
   "license": "MIT",
   "repository": {
     "type": "git",

@@ -6,7 +6,7 @@ Crypto risk intelligence for Claude Desktop, Cursor, and any MCP-compatible AI.
 
 | Tool | Description | Limit |
 |------|-------------|-------|
-| `check_wallet_risk` | Fast risk score, entity, labels, sanctions hit (54M+ labeled addresses) | **3 / day** free · 10,000 / day with key |
+| `check_wallet_risk` | Fast risk score, entity, labels, sanctions hit — 45M+ attributed addresses across 12 chains, including 485K+ linked to illicit activity and 1,000+ sanctioned addresses across 5 authorities (OFAC, EU, AU, JP, FR) | **3 / day** free · 10,000 / day with key |
 | `lookup_address` | Deep address report — entity, risk factors, GoPlus flags, counterparty exposure, balance | **10 / day** free · 100 / hour with key |
 | `get_trace_status` | Fund-trace summary for a public hack incident — hops, endpoints by type (exchange/mixer/bridge/defi), exposure | Unlimited |
 
@@ -87,6 +87,14 @@ Free tier: 2 of 3 checks left today — set CHAINHINT_API_KEY (Agency plan, http
 ```
 
 When the address is in ChainHint's agent-infrastructure registry (agent-token launchpads, deployer factories, routers, payment facilitators, known agent wallets), the report adds an `🤖` line, e.g. *Known agent infrastructure: Virtuals launchpad* — a registry fact you can verify at its source, not a behavioural classification and not part of the risk score.
+
+Evidence and entity lines say what the finding is, never more:
+
+- `⛔ Sanctioned` only for a sanctions designation; an issuer freeze, a law-enforcement attribution, a seizure order or a blocklist each says *Not a sanctions designation.*
+- A freeze of the tokens held by a token's own contract (Tether blacklisted the USDT held by the USDT contract) prints *Tether blacklisted tokens held by this contract* — it carries no risk weight and is not a "Frozen by issuer" verdict.
+- An entity whose attribution is unconfirmed is printed as a candidate (*⚠️ Attribution unconfirmed*) and a venue that no longer operates is marked *Venue closed* or *Bankrupt*.
+
+Addresses: EVM `0x…`, Bitcoin, Solana, TRON and TON — for TON any mainnet form works (friendly `EQ…`/`UQ…`/`Ef…`/`Uf…` or raw `0:<hex>`); testnet `kQ…`/`0Q…` is not covered.
 
 ## Development (no build step)
 

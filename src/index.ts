@@ -20,6 +20,9 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { apiErrorMessage, formatRiskLevel, lookupRiskLines, traceStatusLine } from "./verdicts.js";
 import { evidenceLines, type EvidenceItem } from "./evidence.js";
+import { entityLine, type EntityBlock } from "./entity.js";
+import { ADDRESS_FORMS, normalizeAddr } from "./address.js";
+import { DATABASE_CANON } from "./canon.js";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -28,7 +31,7 @@ const BASE_URL = process.env.CHAINHINT_API_URL ?? "https://kjiwfwymnuzxriokhcjk.
 const SUPABASE_URL = process.env.CHAINHINT_SUPABASE_URL ?? "https://kjiwfwymnuzxriokhcjk.supabase.co";
 const SUPABASE_ANON_KEY = process.env.CHAINHINT_SUPABASE_ANON_KEY ?? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtqaXdmd3ltbnV6eHJpb2toY2prIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3MzkxODgsImV4cCI6MjA4ODMxNTE4OH0.VqzzF_jI8zF072cbjWEDbYo3PnMDlIPy621iWkXEqyo";
 
-const VERSION = "1.3.3";
+const VERSION = "1.3.4";
 const USER_AGENT = `chainhint-mcp/${VERSION}`;
 const FREE_CHECKS_PER_DAY = 3;
 const UPGRADE_HINT = "set CHAINHINT_API_KEY (Agency plan, https://chainhint.com/pricing) for 10,000/day";
@@ -173,13 +176,6 @@ function endpointBucket(category: string | null | undefined, type: string | null
   return "unknown";
 }
 
-// EVM addresses are case-insensitive and stored lowercase; base58 chains
-// (BTC/TRON/SOL/TON) are case-sensitive — never lowercase those.
-function normalizeAddr(addr: string): string {
-  const a = addr.trim();
-  return a.startsWith("0x") ? a.toLowerCase() : a;
-}
-
 type ExposureBucket = {
   category: string;
   usd: number;
@@ -257,9 +253,9 @@ const server = new McpServer({
 
 server.tool(
   "check_wallet_risk",
-  "Fast risk check for a crypto wallet address against ChainHint's 54M+ labeled address database (12 chains). Returns risk score 0-100, risk level (clean/low/medium/high/critical/sanctioned), entity name and category, labels, and sanctions hit. Use it to decide allow/warn/block before paying or interacting with a counterparty wallet. Free: 3 checks per day without a key; CHAINHINT_API_KEY (Agency plan) lifts it to 10,000/day. For a deeper report (risk factors, exposure, balance) use lookup_address.",
+  `Fast risk check for a crypto wallet address against ChainHint's entity database — ${DATABASE_CANON}. Returns risk score 0-100, risk level (clean/low/medium/high/critical/sanctioned), entity name and category, labels, and sanctions hit. Use it to decide allow/warn/block before paying or interacting with a counterparty wallet. Free: 3 checks per day without a key; CHAINHINT_API_KEY (Agency plan) lifts it to 10,000/day. For a deeper report (risk factors, exposure, balance) use lookup_address.`,
   {
-    address: z.string().describe("Wallet address to check (EVM 0x..., Bitcoin, or Solana)"),
+    address: z.string().describe(`Wallet address to check: ${ADDRESS_FORMS}`),
     chain: z.string().optional().describe("Blockchain: ethereum, bsc, polygon, arbitrum, optimism, base, avalanche, gnosis, bitcoin, solana, tron, ton (default: auto-detect from address format; the response chain is the address family for bitcoin/solana/tron/ton)"),
   },
   async ({ address, chain }) => {
@@ -274,7 +270,8 @@ server.tool(
         risk_score: number;
         risk_level: string;
         category: string | null;
-        entity: { name: string; category: string; subcategory: string | null; verified: boolean } | null;
+        // attribution_unconfirmed / operating_status: migration 144 (optional).
+        entity: EntityBlock | null;
         labels: string[];
         sanctions: { hit: boolean };
         is_contract: boolean | null;
@@ -304,13 +301,13 @@ server.tool(
       ];
 
       // Canon (same as chainhint.com and the TG bot): an address that is not in
-      // the labeled database has NO DATA — that is not evidence it is clean.
+      // the entity database has NO DATA — that is not evidence it is clean.
       // The API still returns risk_score 0 / "clean" for not-found, so the
       // wording is fixed here, and public incidents are cross-checked so a
       // known hack attacker that never got an `addresses` row is not
       // presented as unknown.
       if (!d.found_in_db) {
-        lines.push(`**Risk:** ⚪ NO DATA — address is not in ChainHint's labeled database. This is not evidence it is clean.`);
+        lines.push(`**Risk:** ⚪ NO DATA — address is not in ChainHint's entity database. This is not evidence it is clean.`);
         const inc = await findPublicIncidentByAttacker(d.address);
         if (inc) {
           const attribution = attackerAttribution({ attacker_address: d.address, ...inc });
@@ -336,9 +333,8 @@ server.tool(
       if (walletEvidence.length) lines.push(`**Evidence:**`, ...walletEvidence);
 
       if (d.entity?.name) {
-        const sub = d.entity.subcategory ? ` / ${d.entity.subcategory}` : "";
-        const ver = d.entity.verified ? ", verified" : "";
-        lines.push(`**Entity:** ${d.entity.name} (${d.entity.category}${sub}${ver})`);
+        // An unconfirmed attribution is marked; the API's top-level category is then "unknown".
+        lines.push(entityLine(d.entity, { showVerified: true }));
       } else if (d.category) {
         lines.push(`**Category:** ${d.category}`);
       } else {
@@ -373,7 +369,7 @@ server.tool(
   "lookup_address",
   "Detailed lookup of a blockchain address: entity attribution, risk score with the factors behind it, sanctions and GoPlus security flags, counterparty exposure (where funds came from / went to, by category with named entities), balance, token count and transaction count. Free: 10 lookups per day without a key; CHAINHINT_API_KEY lifts it. Supports EVM chains, Bitcoin, Solana, TRON, TON.",
   {
-    address: z.string().describe("Blockchain address to look up"),
+    address: z.string().describe(`Blockchain address to look up: ${ADDRESS_FORMS}`),
     chain: z.string().optional().describe("Blockchain (ethereum, bsc, polygon, arbitrum, optimism, base, avalanche, gnosis, bitcoin, solana, tron, ton)"),
   },
   async ({ address, chain }) => {
@@ -387,7 +383,7 @@ server.tool(
           address: string;
           chain: string;
           risk?: { score: number; level: string; factors?: Record<string, boolean>; details?: string[] };
-          entity?: { name: string; category: string; subcategory?: string | null; verified?: boolean; confidence?: number; source?: string } | null;
+          entity?: (EntityBlock & { source?: string }) | null;
           labels?: string[];
           is_contract?: boolean;
           sanctions?: { identifications?: Array<{ name?: string; program?: string; url?: string }> };
@@ -436,9 +432,7 @@ server.tool(
       ];
 
       if (d.entity?.name) {
-        const sub = d.entity.subcategory ? ` / ${d.entity.subcategory}` : "";
-        const conf = d.entity.confidence != null ? `, confidence ${Math.round(d.entity.confidence * 100)}%` : "";
-        lines.push(`**Entity:** ${d.entity.name} (${d.entity.category}${sub}${conf})`);
+        lines.push(entityLine(d.entity));
       } else {
         lines.push(`**Entity:** Unknown / unlabeled`);
       }
