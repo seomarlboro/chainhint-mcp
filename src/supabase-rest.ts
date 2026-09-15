@@ -32,7 +32,7 @@ export const PUBLISHABLE_KEY_PLACEHOLDER = "sb_publishable_PASTE_BEFORE_PUBLISH"
  * `prepublishOnly` (scripts/check-publish.mjs) refuses to publish while this is the
  * placeholder, a JWT or anything that is not a publishable key.
  */
-export const DEFAULT_SUPABASE_KEY: string = PUBLISHABLE_KEY_PLACEHOLDER;
+export const DEFAULT_SUPABASE_KEY: string = "sb_publishable_BpalXiQKLHEpDqyNpt2Tkw_JYkuIGBK";
 
 /** Why `key` must not be the published default, or null when it is a real publishable key. */
 export function publishKeyProblem(key: string): string | null {
