@@ -39,6 +39,14 @@ export function formatRiskLevel(score: number): string {
   return "CLEAN";
 }
 
+/**
+ * Risk factors the API still returns in the response shape but no longer
+ * scores (always false). Never printed, whatever an old or cached response says.
+ * contract_not_verified: retired 2026-09-15 (risk-engine.ts) — the contract
+ * flag it read was wrong on every audited row.
+ */
+export const RETIRED_RISK_FACTORS: readonly string[] = ["contract_not_verified"];
+
 export type DataUnavailable = { provider?: string; reason?: string };
 
 export interface LookupRiskInput {
@@ -75,7 +83,9 @@ export function lookupRiskLines(d: LookupRiskInput): string[] {
 
   const level = (d.risk.level ?? formatRiskLevel(d.risk.score)).toUpperCase();
   const lines = [`**Risk Score:** ${d.risk.score}/100 — **${level}**`];
-  const factors = Object.entries(d.risk.factors ?? {}).filter(([, v]) => v).map(([k]) => k);
+  const factors = Object.entries(d.risk.factors ?? {})
+    .filter(([k, v]) => v === true && !RETIRED_RISK_FACTORS.includes(k))
+    .map(([k]) => k);
   if (factors.length) lines.push(`**Risk Factors:** ${factors.join(", ")}`);
   if (d.risk.details?.length) lines.push(`**Risk Details:** ${d.risk.details.join("; ")}`);
   // Scored from other inputs (DB entity, sanctions), but the transfer side was missing.

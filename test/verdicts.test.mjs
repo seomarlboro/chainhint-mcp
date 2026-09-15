@@ -90,3 +90,22 @@ test("errors: 422 is marked final, 503 is marked not-clean", () => {
   assert.match(apiErrorMessage(503, "Transfer data unavailable", "u"), /not a clean result/);
   assert.equal(apiErrorMessage(400, undefined, "https://x"), "HTTP 400: https://x");
 });
+
+test("lookup: contract_not_verified is retired — never printed, even if an old response says true", () => {
+  const lines = lookupRiskLines({
+    risk: { score: 10, level: "low", factors: { contract_not_verified: true, new_address: true } },
+    risk_status: "scored",
+  });
+  assert.deepEqual(lines, ["**Risk Score:** 10/100 — **LOW**", "**Risk Factors:** new_address"]);
+  assert.doesNotMatch(lookupRiskLines({ risk: { score: 0, factors: { contract_not_verified: true } } }).join("\n"), /contract_not_verified|Risk Factors/);
+});
+
+test("lookup: the USDT contract (own-token-contract freeze, scored 0) is not a HIGH or freeze verdict", () => {
+  // Shape of address-lookup for the USDT contract after 2026-09-15.
+  const text = lookupRiskLines({
+    risk: { score: 0, level: "clean", factors: { issuer_freeze: false, contract_not_verified: false }, details: ["Tether blacklisted tokens held by this contract"] },
+    risk_status: "scored",
+  }).join("\n");
+  assert.match(text, /Tether blacklisted tokens held by this contract/);
+  assert.doesNotMatch(text, /HIGH|issuer_freeze|Frozen by issuer/);
+});

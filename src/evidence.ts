@@ -31,6 +31,13 @@ export interface EvidenceItem {
   token?: string | null;
   chain?: string | null;
   first_seen_at?: string | null;
+  /**
+   * API since 2026-09-15: true only on an issuer freeze whose freezing token
+   * contract IS the looked-up address (Tether blacklisted the USDT held by the
+   * USDT contract). Scored 0 with no floor; printed as the backend's risk
+   * detail line, never as "Frozen by issuer".
+   */
+  held_by_token_contract?: boolean;
 }
 
 export const NOT_A_SANCTIONS_DESIGNATION = "Not a sanctions designation.";
@@ -72,9 +79,24 @@ function attributionLine(e: EvidenceItem): string {
   return e.subject ? `${head}: ${e.subject}` : head;
 }
 
+/** True for the one freeze that says nothing about the address as a counterparty. */
+export function isOwnTokenContractFreeze(e: Pick<EvidenceItem, "class" | "held_by_token_contract">): boolean {
+  return e.class === "issuer_freeze" && e.held_by_token_contract === true;
+}
+
+/**
+ * Same sentence as the backend's risk detail line (risk-engine.ts):
+ * "Tether blacklisted tokens held by this contract" — issuers de-duplicated.
+ */
+export function ownTokenContractFreezeText(items: ReadonlyArray<Pick<EvidenceItem, "authority">>): string {
+  const issuers = [...new Set(items.map((e) => e.authority))].join(", ");
+  return `${issuers} blacklisted tokens held by this contract`;
+}
+
 /** "⛔ Sanctioned — US OFAC · … " / "🧊 Frozen by issuer — Tether (USDT, TRON) · … Not a sanctions designation." */
 export function evidenceText(e: EvidenceItem): string | null {
   if (!isEvidenceClass(e.class)) return null;
+  if (isOwnTokenContractFreeze(e)) return ownTokenContractFreezeText([e]);
   const { icon, title } = TITLES[e.class];
   const date = day(e.document_date);
   let line: string;
@@ -99,12 +121,20 @@ export function evidenceText(e: EvidenceItem): string | null {
   return `${icon} ${caveat ? `${title} — ${line}. ${caveat}` : `${title} — ${line}`}`;
 }
 
-/** Designations first, then by strength of proof; unknown classes dropped. */
+/**
+ * Designations first, then by strength of proof; unknown classes dropped.
+ * Freezes of tokens held by the looked-up token contract itself close the
+ * list as one line in the backend's wording — never a "Frozen by issuer" line.
+ */
 export function evidenceLines(items: ReadonlyArray<EvidenceItem> | null | undefined): string[] {
   if (!items?.length) return [];
   const rank = (c: string) => (EVIDENCE_CLASSES as readonly string[]).indexOf(c);
-  return [...items]
-    .filter((e) => isEvidenceClass(e.class))
+  const known = items.filter((e) => isEvidenceClass(e.class));
+  const own = known.filter(isOwnTokenContractFreeze);
+  const lines = known
+    .filter((e) => !isOwnTokenContractFreeze(e))
     .sort((a, b) => rank(a.class) - rank(b.class))
     .map((e) => `- ${evidenceText(e)}`);
+  if (own.length) lines.push(`- ${ownTokenContractFreezeText(own)}`);
+  return lines;
 }
