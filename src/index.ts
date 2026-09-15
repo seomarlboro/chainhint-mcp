@@ -23,15 +23,21 @@ import { evidenceLines, type EvidenceItem } from "./evidence.js";
 import { entityLine, type EntityBlock } from "./entity.js";
 import { ADDRESS_FORMS, normalizeAddr } from "./address.js";
 import { DATABASE_CANON } from "./canon.js";
+import { resolveSupabaseKey, supabaseRestHeaders } from "./supabase-rest.js";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const API_KEY = process.env.CHAINHINT_API_KEY;
 const BASE_URL = process.env.CHAINHINT_API_URL ?? "https://kjiwfwymnuzxriokhcjk.supabase.co/functions/v1";
 const SUPABASE_URL = process.env.CHAINHINT_SUPABASE_URL ?? "https://kjiwfwymnuzxriokhcjk.supabase.co";
-const SUPABASE_ANON_KEY = process.env.CHAINHINT_SUPABASE_ANON_KEY ?? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtqaXdmd3ltbnV6eHJpb2toY2prIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3MzkxODgsImV4cCI6MjA4ODMxNTE4OH0.VqzzF_jI8zF072cbjWEDbYo3PnMDlIPy621iWkXEqyo";
+// TODO(KIR-81, before `npm publish` of 1.4.0): replace this default — still the
+// project's LEGACY anon JWT — with its sb_publishable_… key (public by design).
+const DEFAULT_SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtqaXdmd3ltbnV6eHJpb2toY2prIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3MzkxODgsImV4cCI6MjA4ODMxNTE4OH0.VqzzF_jI8zF072cbjWEDbYo3PnMDlIPy621iWkXEqyo";
 
-const VERSION = "1.3.4";
+// Publishable key, sent only in `apikey` (never as a Bearer token) — see supabase-rest.ts.
+const SUPABASE_KEY = resolveSupabaseKey(process.env, DEFAULT_SUPABASE_KEY);
+
+const VERSION = "1.4.0";
 const USER_AGENT = `chainhint-mcp/${VERSION}`;
 const FREE_CHECKS_PER_DAY = 3;
 const UPGRADE_HINT = "set CHAINHINT_API_KEY (Agency plan, https://chainhint.com/pricing) for 10,000/day";
@@ -96,11 +102,7 @@ async function supabaseGet(table: string, params: Record<string, string>): Promi
   }
 
   const res = await fetch(url.toString(), {
-    headers: {
-      "apikey": SUPABASE_ANON_KEY,
-      "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-      "Accept": "application/json",
-    },
+    headers: supabaseRestHeaders(SUPABASE_KEY),
   });
 
   if (!res.ok) {
