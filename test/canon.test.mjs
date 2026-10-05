@@ -6,12 +6,14 @@ import { DATABASE_CANON } from "../dist/canon.js";
 
 const root = new URL("../", import.meta.url);
 const read = (p) => readFileSync(new URL(p, root), "utf8");
-const RETIRED = [/54(\.9)?M/i, /3\.9M/i, /labeled address/i, /known entities/i, /OFAC, EU, UK, UN/];
+// 45M+ and 485K+ joined this list on 2026-10-05: the site had moved to 48M+ /
+// 486K+ and this package had not. A retired figure must not be able to come back.
+const RETIRED = [/54(\.9)?M/i, /3\.9M/i, /labeled address/i, /known entities/i, /OFAC, EU, UK, UN/, /45M\+/, /485K\+/];
 
 test("canon sentence is the site's", () => {
   assert.equal(
     DATABASE_CANON,
-    "45M+ attributed addresses across 12 chains, including 485K+ addresses linked to illicit activity and 1,000+ sanctioned addresses across 5 authorities (OFAC, EU, AU, JP, FR)",
+    "48M+ attributed addresses across 12 chains, including 486K+ addresses linked to illicit activity and 1,000+ sanctioned addresses across 5 authorities (OFAC, EU, AU, JP, FR)",
   );
 });
 
@@ -31,7 +33,7 @@ test("no retired figure in src, README or package.json", () => {
     for (const re of RETIRED) assert.doesNotMatch(text, re, `${f} still says ${re}`);
   }
   const readme = read("README.md");
-  for (const s of ["45M+ attributed addresses", "485K+", "1,000+ sanctioned addresses", "OFAC, EU, AU, JP, FR"]) {
+  for (const s of ["48M+ attributed addresses", "486K+", "1,000+ sanctioned addresses", "OFAC, EU, AU, JP, FR"]) {
     assert.ok(readme.includes(s), `README misses ${s}`);
   }
 });

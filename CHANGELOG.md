@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.4.1 — 2026-10-05
+
+- **The canon had fallen behind the site, and the rule that was supposed to stop
+  that was prose.** `src/canon.ts` said `45M+` attributed and `485K+`
+  illicit-linked; `https://chainhint.com/llms.txt` had said `48M+` and `486K+`
+  since 2026-09-18 — the site generates those from a database snapshot
+  (`showcase:sync` -> `llms:sync`) and they move on their own. `485K+` was a
+  figure the site had itself retired three weeks earlier. The tool descriptions
+  this package publishes carried both.
+- **`npm run canon:check`** fetches `llms.txt` and fails when a canon figure is
+  not on the site; it runs on `prepublishOnly`, so a stale figure cannot be
+  published again. An unreachable site exits 2 and reports "could not check" —
+  never a pass.
+- `45M+` and `485K+` joined the retired-figure list in `test/canon.test.mjs`, so
+  neither can come back.
+- Nothing else changed: no tool, no argument, no output shape. The free tier is
+  still 3 wallet checks and 10 lookups per IP per day.
+
 ## 1.4.0 — 2026-09-15
 
 - **Supabase publishable key (KIR-81):** `get_trace_status` reads public incidents with the project's publishable key, sent **only** in the `apikey` header — never as `Authorization: Bearer`. New override `CHAINHINT_SUPABASE_PUBLISHABLE_KEY`; the old `CHAINHINT_SUPABASE_ANON_KEY` is still honoured.

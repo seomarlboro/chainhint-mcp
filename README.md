@@ -6,7 +6,7 @@ Crypto risk intelligence for Claude Desktop, Cursor, and any MCP-compatible AI.
 
 | Tool | Description | Limit |
 |------|-------------|-------|
-| `check_wallet_risk` | Fast risk score, entity, labels, sanctions hit — 45M+ attributed addresses across 12 chains, including 485K+ linked to illicit activity and 1,000+ sanctioned addresses across 5 authorities (OFAC, EU, AU, JP, FR) | **3 / day** free · 10,000 / day with key |
+| `check_wallet_risk` | Fast risk score, entity, labels, sanctions hit — 48M+ attributed addresses across 12 chains, including 486K+ linked to illicit activity and 1,000+ sanctioned addresses across 5 authorities (OFAC, EU, AU, JP, FR) | **3 / day** free · 10,000 / day with key |
 | `lookup_address` | Deep address report — entity, risk factors, GoPlus flags, counterparty exposure, balance | **10 / day** free · 100 / hour with key |
 | `get_trace_status` | Fund-trace summary for a public hack incident — hops, endpoints by type (exchange/mixer/bridge/defi), exposure | Unlimited |
 

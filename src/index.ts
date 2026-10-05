@@ -34,7 +34,7 @@ const SUPABASE_URL = process.env.CHAINHINT_SUPABASE_URL ?? "https://kjiwfwymnuzx
 // Publishable key, sent only in `apikey` (never as a Bearer token) — see supabase-rest.ts.
 const SUPABASE_KEY = resolveSupabaseKey(process.env, DEFAULT_SUPABASE_KEY);
 
-const VERSION = "1.4.0";
+const VERSION = "1.4.1";
 const USER_AGENT = `chainhint-mcp/${VERSION}`;
 const FREE_CHECKS_PER_DAY = 3;
 const UPGRADE_HINT = "set CHAINHINT_API_KEY (Agency plan, https://chainhint.com/pricing) for 10,000/day";
