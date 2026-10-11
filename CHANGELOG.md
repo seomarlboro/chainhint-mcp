@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — 2026-10-11
+
+- **Dependencies:** `npm audit` reported 10 advisories (1 critical, 4 high), 9
+  of them in the tree under `@modelcontextprotocol/sdk` — mostly its HTTP
+  transport (express, hono, proxy-addr), which this stdio server never starts.
+  The lockfile now resolves SDK 1.32.1 and esbuild 0.28.2: 0 advisories,
+  runtime and dev. No release needed for users: the package declares
+  `@modelcontextprotocol/sdk ^1.0.0`, so every fresh install already resolves
+  the patched versions; the lockfile only governs this repository's own builds.
+- **`RELEASING.md`:** where and how to publish, step by step, with what went
+  wrong on 1.4.1 and how each step prevents it.
+
 ## 1.4.1 — 2026-10-11
 
 - **The canon had fallen behind the site, and the rule that was supposed to stop
