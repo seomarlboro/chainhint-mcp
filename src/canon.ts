@@ -16,10 +16,10 @@
  */
 
 export const ATTRIBUTED_ADDRESSES = "48M+";
-export const ILLICIT_ADDRESSES = "486K+";
+export const ILLICIT_ADDRESSES = "483K+";
 export const SANCTIONED_ADDRESSES = "1,000+";
 export const SANCTIONS_AUTHORITIES = "OFAC, EU, AU, JP, FR";
 
-/** "48M+ attributed addresses across 12 chains, including 486K+ …" */
+/** "48M+ attributed addresses across 12 chains, including 483K+ …" */
 export const DATABASE_CANON =
   `${ATTRIBUTED_ADDRESSES} attributed addresses across 12 chains, including ${ILLICIT_ADDRESSES} addresses linked to illicit activity and ${SANCTIONED_ADDRESSES} sanctioned addresses across 5 authorities (${SANCTIONS_AUTHORITIES})`;

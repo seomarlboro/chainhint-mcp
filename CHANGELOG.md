@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.4.1 — 2026-10-05
+## 1.4.1 — 2026-10-11
 
 - **The canon had fallen behind the site, and the rule that was supposed to stop
   that was prose.** `src/canon.ts` said `45M+` attributed and `485K+`
@@ -15,6 +15,12 @@
   never a pass.
 - `45M+` and `485K+` joined the retired-figure list in `test/canon.test.mjs`, so
   neither can come back.
+- **2026-10-11, before merging:** `canon:check` — the check this release adds —
+  failed on its own branch. The site's illicit-linked figure had FALLEN from
+  `486K+` to `483K+` on 2026-10-09 (corrections removed labels; the count is not
+  monotonic). The canon now says `483K+`, and `486K+` joined the retired list.
+  The mechanism caught exactly the drift it was written for, six days after it
+  was written.
 - Nothing else changed: no tool, no argument, no output shape. The free tier is
   still 3 wallet checks and 10 lookups per IP per day.
 
