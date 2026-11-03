@@ -18,8 +18,10 @@
 export const ATTRIBUTED_ADDRESSES = "48M+";
 export const ILLICIT_ADDRESSES = "483K+";
 export const SANCTIONED_ADDRESSES = "1,000+";
-export const SANCTIONS_AUTHORITIES = "OFAC, EU, AU, JP, FR";
+export const SANCTIONS_AUTHORITIES = "US OFAC, EU, France";
+/** As https://chainhint.com/llms.txt counts them (canon:check pins it). */
+export const SANCTIONS_AUTHORITY_COUNT = 3;
 
 /** "48M+ attributed addresses across 12 chains, including 483K+ …" */
 export const DATABASE_CANON =
-  `${ATTRIBUTED_ADDRESSES} attributed addresses across 12 chains, including ${ILLICIT_ADDRESSES} addresses linked to illicit activity and ${SANCTIONED_ADDRESSES} sanctioned addresses across 5 authorities (${SANCTIONS_AUTHORITIES})`;
+  `${ATTRIBUTED_ADDRESSES} attributed addresses across 12 chains, including ${ILLICIT_ADDRESSES} addresses linked to illicit activity and ${SANCTIONED_ADDRESSES} sanctioned addresses from lists of ${SANCTIONS_AUTHORITY_COUNT} authorities (${SANCTIONS_AUTHORITIES})`;

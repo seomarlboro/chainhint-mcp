@@ -19,7 +19,7 @@
  * A network failure is reported as "could not check", never as a pass: an
  * unreachable site is not agreement.
  */
-import { ATTRIBUTED_ADDRESSES, ILLICIT_ADDRESSES, SANCTIONED_ADDRESSES } from "../dist/canon.js";
+import { ATTRIBUTED_ADDRESSES, ILLICIT_ADDRESSES, SANCTIONED_ADDRESSES, SANCTIONS_AUTHORITY_COUNT } from "../dist/canon.js";
 
 const URL_ = process.env.CHAINHINT_LLMS_URL ?? "https://chainhint.com/llms.txt";
 const TIMEOUT_MS = 20_000;
@@ -28,6 +28,8 @@ const figures = [
   ["attributed addresses", `${ATTRIBUTED_ADDRESSES} attributed addresses`],
   ["illicit-linked addresses", `${ILLICIT_ADDRESSES} addresses linked to illicit activity`],
   ["sanctioned addresses", `${SANCTIONED_ADDRESSES} addresses carry an active sanctions designation`],
+  // 1.4.2: the authority count, so a list the site stops screening cannot stay in the package.
+  ["sanctions authorities", `from lists of ${SANCTIONS_AUTHORITY_COUNT} authorities`],
 ];
 
 let text;
