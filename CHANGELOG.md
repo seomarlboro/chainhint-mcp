@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.4.2 — 2026-11-03
+
+- **The package named two sanctions lists ChainHint no longer screens.** `check_wallet_risk`
+  and the README said "1,000+ sanctioned addresses across 5 authorities (OFAC, EU, AU, JP,
+  FR)". On 2026-11-03 the site withdrew Australia DFAT and Japan MOF: no address it holds is
+  designated by either, and the 14 rows credited to them were OFAC designations OpenSanctions
+  had merged (main repo migration 289). The canon now says "from lists of 3 authorities
+  (US OFAC, EU, France)" — the site's own wording in llms.txt.
+- **`canon:check` now pins the authority count** against llms.txt, so a list the site stops
+  screening fails the publish instead of staying in the package. "AU, JP" and "5 authorities"
+  joined the retired-figure list.
+- Versions before 1.4.0 still send ChainHint's legacy Supabase anon key in
+  `get_trace_status`; ChainHint is retiring those keys, after which those versions answer 401
+  there. Upgrade to 1.4.2. No tool, argument or output shape changed.
+
 ## Unreleased — 2026-10-11
 
 - **Dependencies:** `npm audit` reported 10 advisories (1 critical, 4 high), 9
