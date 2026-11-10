@@ -49,8 +49,16 @@ export const RETIRED_RISK_FACTORS: readonly string[] = ["contract_not_verified"]
 
 export type DataUnavailable = { provider?: string; reason?: string };
 
+/** `screen_status` of both endpoints: which screens answered, and one sentence naming those that did not. */
+export interface ScreenStatusLike { complete?: boolean; incomplete?: string[]; note?: string | null }
+
 export interface LookupRiskInput {
-  risk?: { score: number; level?: string; factors?: Record<string, boolean>; details?: string[] };
+  /** `null` since 2026-10: the API withholds the legacy block exactly when it refuses the score. */
+  risk?: { score: number; level?: string; factors?: Record<string, boolean>; details?: string[] } | null;
+  /** The verdict beside it — `score: null`, `level: "unknown"` when a screen did not answer. */
+  risk_verdict?: { score?: number | null; level?: string; screen_status?: ScreenStatusLike | null } | null;
+  /** "Checked N counterparties in recent transfers, none flagged. Older activity was not read." */
+  score_basis?: string | null;
   /** address-lookup: "scored" | "insufficient_data" | "unavailable". Absent on old API versions. */
   risk_status?: string;
   data_availability?: { transfers?: string; provider?: string; reason?: string; detail?: string };
@@ -68,9 +76,60 @@ function notClean(detail: string): string {
   return /not a clean result/i.test(detail) ? "" : " This is not a clean result.";
 }
 
+/** "Absence of data is not a clean verdict." is the API's own closing sentence — say it once. */
+function notScoredLine(why: string): string {
+  const said = /not a clean (result|verdict)/i.test(why);
+  const body = why.replace(/\.\s*$/, "");
+  return `**Risk:** ⚪ NOT SCORED — ${body}.${said ? "" : " This is not a clean result."} No risk score is printed.`;
+}
+
+/** `is_contract` is `null` when the contract read did not answer — never "EOA". */
+export function addressTypeLine(isContract: boolean | null | undefined): string {
+  if (isContract === true) return "**Type:** Smart Contract";
+  if (isContract === false) return "**Type:** EOA (wallet)";
+  return "**Type:** not determined — the contract check did not answer";
+}
+
+export interface ReputationRiskInput {
+  risk_score?: number | null;
+  risk_level?: string | null;
+  risk_status?: string | null;
+  risk_score_note?: string | null;
+  score_basis?: string | null;
+  exposure_checked?: boolean | null;
+  screen_status?: ScreenStatusLike | null;
+  sanctions?: { hit?: boolean | null; complete?: boolean | null } | null;
+}
+
+/**
+ * The risk lines of check_wallet_risk for an address the database holds. Until 1.4.3 this
+ * was one template — `${risk_score}/100 — ${risk_level}` — which printed "null/100 — UNKNOWN"
+ * for a withheld score and never mentioned an incomplete screen or an unread exposure.
+ */
+export function reputationRiskLines(d: ReputationRiskInput): string[] {
+  const note = d.screen_status?.note ?? null;
+  if (typeof d.risk_score !== "number") {
+    return [notScoredLine(note ?? d.risk_score_note ?? "no score is available for this address")];
+  }
+  const lines = [`**Risk Score:** ${d.risk_score}/100 — **${(d.risk_level ?? formatRiskLevel(d.risk_score)).toUpperCase()}**`];
+  if (d.score_basis) lines.push(`**Basis:** ${d.score_basis}`);
+  if (d.exposure_checked === false) {
+    lines.push("**Counterparty Exposure:** not checked — outbound counterparties were not read, so the score above is a floor, not a full assessment.");
+  }
+  // A score above the clean band is still printed over an incomplete screen; say what is missing.
+  if (note) lines.push(`⚠️ ${note}`);
+  else if (d.sanctions?.complete === false) lines.push("⚠️ Sanctions screen incomplete — it could not be read. This is not a clean result.");
+  return lines;
+}
+
 /** The risk lines of lookup_address. Never a score when there was nothing to score. */
 export function lookupRiskLines(d: LookupRiskInput): string[] {
+  // A screen that did not answer says which one and why (the API's own sentence). It comes
+  // first: "transfer data could not be read" was printed for ANY `unavailable`, including a
+  // sanctions screen or a GoPlus refusal that had nothing to do with transfers.
+  const screenNote = d.risk_verdict?.screen_status?.note ?? null;
   if (d.risk_status === "unavailable") {
+    if (screenNote) return [notScoredLine(screenNote)];
     const why = unavailableDetail(d);
     return [`**Risk:** ⚪ DATA UNAVAILABLE — ${why}.${notClean(why)} No risk score was computed.`];
   }
@@ -79,7 +138,13 @@ export function lookupRiskLines(d: LookupRiskInput): string[] {
       `**Risk:** ⚪ NOT SCORED — insufficient data. This is not evidence the address is clean.`,
     ];
   }
-  if (!d.risk) return [];
+  // The score was withheld (`risk: null`) while `risk_status` still read "scored" — an
+  // address that carries a label and a screen that did not answer. This returned NO line at
+  // all until 1.4.3, so the report named the entity and said nothing about risk: an agent
+  // reads that silence as "nothing wrong".
+  if (!d.risk) {
+    return [notScoredLine(screenNote ?? "the score was withheld because a screen that could have raised it did not answer")];
+  }
 
   const level = (d.risk.level ?? formatRiskLevel(d.risk.score)).toUpperCase();
   const lines = [`**Risk Score:** ${d.risk.score}/100 — **${level}**`];
@@ -88,6 +153,7 @@ export function lookupRiskLines(d: LookupRiskInput): string[] {
     .map(([k]) => k);
   if (factors.length) lines.push(`**Risk Factors:** ${factors.join(", ")}`);
   if (d.risk.details?.length) lines.push(`**Risk Details:** ${d.risk.details.join("; ")}`);
+  if (d.score_basis) lines.push(`**Basis:** ${d.score_basis}`);
   // Scored from other inputs (DB entity, sanctions), but the transfer side was missing.
   if (d.exposure?.data_unavailable || d.data_availability?.transfers === "unavailable") {
     const why = unavailableDetail(d);

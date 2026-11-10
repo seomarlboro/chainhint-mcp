@@ -11,12 +11,12 @@ const read = (p) => readFileSync(new URL(p, root), "utf8");
 // 486K+ joined on 2026-10-11, before this PR could merge: the site's illicit count
 // FELL to 483K+ on 2026-10-09 when corrections removed labels — it is not monotonic.
 // "AU, JP" and "5 authorities" joined on 2026-11-03: the site withdrew both lists (main repo migration 289).
-const RETIRED = [/54(\.9)?M/i, /3\.9M/i, /labeled address/i, /known entities/i, /OFAC, EU, UK, UN/, /45M\+/, /485K\+/, /486K\+/, /AU, JP/, /5 authorities/];
+const RETIRED = [/54(\.9)?M/i, /3\.9M/i, /labeled address/i, /known entities/i, /OFAC, EU, UK, UN/, /45M\+/, /485K\+/, /486K\+/, /AU, JP/, /5 authorities/, /48M\+/, /483K\+/, /164K\+/];
 
 test("canon sentence is the site's", () => {
   assert.equal(
     DATABASE_CANON,
-    "48M+ attributed addresses across 12 chains, including 483K+ addresses linked to illicit activity and 1,000+ sanctioned addresses from lists of 3 authorities (US OFAC, EU, France)",
+    "47M+ attributed addresses across 12 chains, including 160K+ addresses linked to illicit activity and 1,000+ sanctioned addresses from lists of 3 authorities (US OFAC, EU, France)",
   );
 });
 
@@ -36,7 +36,7 @@ test("no retired figure in src, README or package.json", () => {
     for (const re of RETIRED) assert.doesNotMatch(text, re, `${f} still says ${re}`);
   }
   const readme = read("README.md");
-  for (const s of ["48M+ attributed addresses", "483K+", "1,000+ sanctioned addresses", "3 authorities (US OFAC, EU, France)"]) {
+  for (const s of ["47M+ attributed addresses", "160K+", "1,000+ sanctioned addresses", "3 authorities (US OFAC, EU, France)"]) {
     assert.ok(readme.includes(s), `README misses ${s}`);
   }
 });
