@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  apiErrorMessage, isTraceableChain, lookupRiskLines, traceStatusLine, tracingUnavailableMessage,
+  addressTypeLine, apiErrorMessage, isTraceableChain, lookupRiskLines, reputationRiskLines, traceStatusLine, tracingUnavailableMessage,
 } from "../dist/verdicts.js";
 
 test("lookup: risk_status unavailable never prints a score or CLEAN (the 1.3.1 Solana defect)", () => {
@@ -108,4 +108,81 @@ test("lookup: the USDT contract (own-token-contract freeze, scored 0) is not a H
   }).join("\n");
   assert.match(text, /Tether blacklisted tokens held by this contract/);
   assert.doesNotMatch(text, /HIGH|issuer_freeze|Frozen by issuer/);
+});
+
+// ── 1.4.3: a withheld score is said, never skipped ──────────────────────────
+
+const SANCTIONS_NOTE = "Screen incomplete — sanctions screen could not be read (sanctions list OFAC SDN is out of date (last update 2026-11-08 05:30 UTC)). Absence of data is not a clean verdict.";
+
+test("lookup: risk null beside risk_status scored prints NOT SCORED — it used to print nothing", () => {
+  // A labelled address whose screen did not answer: the API withholds `risk` and still says "scored".
+  const lines = lookupRiskLines({
+    risk: null, risk_status: "scored",
+    risk_verdict: { score: null, level: "unknown", screen_status: { complete: false, incomplete: ["sanctions"], note: SANCTIONS_NOTE } },
+  });
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /NOT SCORED/);
+  assert.match(lines[0], /sanctions list OFAC SDN is out of date/);
+  assert.equal(lines[0].match(/not a clean (result|verdict)/gi)?.length, 1, "the not-clean sentence is said once");
+  assert.doesNotMatch(lines[0], /\/100|CLEAN\*\*/);
+});
+
+test("lookup: risk null with no note still prints a line, never silence", () => {
+  const lines = lookupRiskLines({ risk: null, risk_status: "scored" });
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /NOT SCORED — the score was withheld/);
+  assert.match(lines[0], /This is not a clean result\./);
+});
+
+test("lookup: unavailable names the screen that failed, not transfer data", () => {
+  const note = "Screen incomplete — address security flags could not be read (GoPlus rate limit (4029)). Absence of data is not a clean verdict.";
+  const text = lookupRiskLines({ risk: null, risk_status: "unavailable", risk_verdict: { score: null, screen_status: { complete: false, note } } }).join("\n");
+  assert.match(text, /GoPlus rate limit \(4029\)/);
+  assert.doesNotMatch(text, /transfer data/);
+});
+
+test("lookup: a checked zero prints what it rests on", () => {
+  const basis = "Checked 6 counterparties in recent transfers, none flagged. Older activity was not read.";
+  const lines = lookupRiskLines({ risk: { score: 0, level: "clean" }, risk_status: "scored", score_basis: basis });
+  assert.deepEqual(lines, ["**Risk Score:** 0/100 — **CLEAN**", `**Basis:** ${basis}`]);
+});
+
+test("address type: null is not an EOA", () => {
+  assert.equal(addressTypeLine(true), "**Type:** Smart Contract");
+  assert.equal(addressTypeLine(false), "**Type:** EOA (wallet)");
+  assert.match(addressTypeLine(null), /not determined/);
+  assert.match(addressTypeLine(undefined), /not determined/);
+});
+
+test("check_wallet_risk: a withheld score never prints null/100", () => {
+  const lines = reputationRiskLines({
+    risk_score: null, risk_level: "unknown", risk_status: "unavailable",
+    screen_status: { complete: false, incomplete: ["counterparty_exposure"], note: "Screen incomplete — counterparty exposure could not be read (outbound counterparties were not read for this verdict). Absence of data is not a clean verdict." },
+  });
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /NOT SCORED — Screen incomplete — counterparty exposure could not be read/);
+  assert.doesNotMatch(lines[0], /null\/100|UNKNOWN\*\*/);
+});
+
+test("check_wallet_risk: no data uses the API's own note", () => {
+  const lines = reputationRiskLines({ risk_score: null, risk_level: "unknown", risk_status: "insufficient_data", risk_score_note: "Not scored: no data for this address." });
+  assert.match(lines[0], /NOT SCORED — Not scored: no data for this address\. This is not a clean result\./);
+});
+
+test("check_wallet_risk: a printed score says what it does not include", () => {
+  const lines = reputationRiskLines({
+    risk_score: 45, risk_level: "medium", exposure_checked: false,
+    screen_status: { complete: false, note: SANCTIONS_NOTE }, sanctions: { hit: null, complete: false },
+  });
+  assert.equal(lines[0], "**Risk Score:** 45/100 — **MEDIUM**");
+  assert.match(lines[1], /Counterparty Exposure:\*\* not checked/);
+  assert.match(lines[2], /sanctions list OFAC SDN is out of date/);
+});
+
+test("check_wallet_risk: a complete, checked answer is the score, its basis and nothing else", () => {
+  const basis = "Checked 3 counterparties in recent transfers, none flagged. Older activity was not read.";
+  assert.deepEqual(
+    reputationRiskLines({ risk_score: 0, risk_level: "clean", exposure_checked: true, score_basis: basis, screen_status: { complete: true, incomplete: [], note: null }, sanctions: { hit: false, complete: true } }),
+    ["**Risk Score:** 0/100 — **CLEAN**", `**Basis:** ${basis}`],
+  );
 });

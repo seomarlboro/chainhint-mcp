@@ -18,7 +18,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { apiErrorMessage, formatRiskLevel, lookupRiskLines, traceStatusLine } from "./verdicts.js";
+import { addressTypeLine, apiErrorMessage, lookupRiskLines, reputationRiskLines, traceStatusLine } from "./verdicts.js";
 import { evidenceLines, type EvidenceItem } from "./evidence.js";
 import { entityLine, type EntityBlock } from "./entity.js";
 import { ADDRESS_FORMS, normalizeAddr } from "./address.js";
@@ -34,7 +34,7 @@ const SUPABASE_URL = process.env.CHAINHINT_SUPABASE_URL ?? "https://kjiwfwymnuzx
 // Publishable key, sent only in `apikey` (never as a Bearer token) — see supabase-rest.ts.
 const SUPABASE_KEY = resolveSupabaseKey(process.env, DEFAULT_SUPABASE_KEY);
 
-const VERSION = "1.4.2";
+const VERSION = "1.4.3";
 const USER_AGENT = `chainhint-mcp/${VERSION}`;
 const FREE_CHECKS_PER_DAY = 3;
 const UPGRADE_HINT = "set CHAINHINT_API_KEY (Agency plan, https://chainhint.com/pricing) for 10,000/day";
@@ -269,13 +269,18 @@ server.tool(
       const { body: d, headers } = await apiGet<{
         address: string;
         chain: string;
-        risk_score: number;
+        risk_score: number | null;
         risk_level: string;
+        risk_status?: string;
+        risk_score_note?: string | null;
+        score_basis?: string | null;
+        exposure_checked?: boolean;
+        screen_status?: { complete?: boolean; incomplete?: string[]; note?: string | null } | null;
         category: string | null;
         // attribution_unconfirmed / operating_status: migration 144 (optional).
         entity: EntityBlock | null;
         labels: string[];
-        sanctions: { hit: boolean };
+        sanctions: { hit: boolean | null; complete?: boolean };
         is_contract: boolean | null;
         found_in_db: boolean;
         sources: string[];
@@ -323,7 +328,7 @@ server.tool(
         }
         lines.push(`Use lookup_address for an on-chain assessment (risk factors, GoPlus flags, counterparty exposure).`);
       } else {
-        lines.push(`**Risk Score:** ${d.risk_score}/100 — **${(d.risk_level ?? formatRiskLevel(d.risk_score)).toUpperCase()}**`);
+        lines.push(...reputationRiskLines(d));
       }
 
       // sanctions.hit comes only from a sanctions designation (API since migration 129);
@@ -384,10 +389,12 @@ server.tool(
         data?: {
           address: string;
           chain: string;
-          risk?: { score: number; level: string; factors?: Record<string, boolean>; details?: string[] };
+          risk?: { score: number; level: string; factors?: Record<string, boolean>; details?: string[] } | null;
+          risk_verdict?: { score?: number | null; level?: string; screen_status?: { complete?: boolean; incomplete?: string[]; note?: string | null } | null } | null;
+          score_basis?: string | null;
           entity?: (EntityBlock & { source?: string }) | null;
           labels?: string[];
-          is_contract?: boolean;
+          is_contract?: boolean | null;
           sanctions?: { identifications?: Array<{ name?: string; program?: string; url?: string }> };
           goplus?: Record<string, string>;
           balance_usd?: number;
@@ -430,7 +437,7 @@ server.tool(
         `## Address Lookup: ${truncateAddr(d.address)}`,
         `**Address:** ${d.address}`,
         `**Chain:** ${d.chain}`,
-        `**Type:** ${d.is_contract ? "Smart Contract" : "EOA (wallet)"}`,
+        addressTypeLine(d.is_contract),
       ];
 
       if (d.entity?.name) {

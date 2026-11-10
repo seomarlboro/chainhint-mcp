@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.4.3 — 2026-11-10
+
+- **`lookup_address` printed no risk line at all when the API withheld the score.** The API
+  answers `risk: null` when a screen that could have raised the score did not answer, and
+  for an address that carries a label it still says `risk_status: "scored"`. The tool then
+  returned the entity and the labels and nothing about risk — which an agent reads as
+  "nothing wrong". It now prints `NOT SCORED` with the API's own sentence naming the screen
+  (a sanctions list out of date, a GoPlus refusal, an unread counterparty exposure).
+- **`check_wallet_risk` printed `null/100 — UNKNOWN`** for the same case, and said nothing
+  about an incomplete screen or an exposure that was not read beside a score it did print.
+  It prints `NOT SCORED` with the reason, and under a printed score: "Counterparty Exposure:
+  not checked" and the incomplete-screen note when they apply.
+- Both tools print the basis of a checked zero ("Checked N counterparties in recent
+  transfers, none flagged. Older activity was not read.").
+- `lookup_address` printed "EOA (wallet)" when the contract check had not answered
+  (`is_contract: null`); it says "not determined".
+- **The tool description still carried figures the site had withdrawn.** After the label
+  withdrawals of 2026-11-08 the site's llms.txt counts fewer attributed and illicit-linked
+  addresses; the README was updated then, `src/canon.ts` and its test were not, so `main`
+  failed its own canon test and `canon:check` would have refused a publish. The canon now
+  matches llms.txt again, and the two withdrawn figures joined the retired list.
+- No tool or argument changed. The output text of the cases above did.
+
 ## 1.4.2 — 2026-11-03
 
 - **The package named two sanctions lists ChainHint no longer screens.** `check_wallet_risk`
