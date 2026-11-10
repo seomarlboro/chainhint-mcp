@@ -31,12 +31,25 @@ export function tracingUnavailableMessage(chain: string | null | undefined): str
   return `Tracing not available for ${c.charAt(0).toUpperCase()}${c.slice(1)}`;
 }
 
-export function formatRiskLevel(score: number): string {
-  if (score >= 90) return "CRITICAL";
-  if (score >= 70) return "HIGH";
-  if (score >= 40) return "MEDIUM";
-  if (score >= 10) return "LOW";
-  return "CLEAN";
+/**
+ * The words ChainHint prints for a score — the address page, the Telegram bot, the PDF and the
+ * API's `risk_label`: one ladder, 81 / 61 / 41 / 21. Until 1.4.4 this file printed the API's
+ * level TOKEN in capitals, and the tokens cross the words: `low` is the band every other
+ * surface calls "Moderate", while "Low Risk" is the token `clean`. So one address read
+ * "30/100 · Moderate" in the bot and "30/100 — LOW" here. The fallback also still cut at
+ * 90 / 70 / 40 / 10, the ladder the API left on 2026-11-01.
+ */
+export function riskLabel(score: number): string {
+  if (score >= 81) return "Critical";
+  if (score >= 61) return "High Risk";
+  if (score >= 41) return "Elevated";
+  if (score >= 21) return "Moderate";
+  return "Low Risk";
+}
+
+/** The API's own label when it sent one, else the same ladder computed here. */
+function labelFor(score: number, apiLabel: string | null | undefined): string {
+  return typeof apiLabel === "string" && apiLabel.trim() ? apiLabel.trim() : riskLabel(score);
 }
 
 /**
@@ -56,7 +69,7 @@ export interface LookupRiskInput {
   /** `null` since 2026-10: the API withholds the legacy block exactly when it refuses the score. */
   risk?: { score: number; level?: string; factors?: Record<string, boolean>; details?: string[] } | null;
   /** The verdict beside it — `score: null`, `level: "unknown"` when a screen did not answer. */
-  risk_verdict?: { score?: number | null; level?: string; screen_status?: ScreenStatusLike | null } | null;
+  risk_verdict?: { score?: number | null; level?: string; label?: string | null; screen_status?: ScreenStatusLike | null } | null;
   /** "Checked N counterparties in recent transfers, none flagged. Older activity was not read." */
   score_basis?: string | null;
   /** address-lookup: "scored" | "insufficient_data" | "unavailable". Absent on old API versions. */
@@ -93,6 +106,10 @@ export function addressTypeLine(isContract: boolean | null | undefined): string 
 export interface ReputationRiskInput {
   risk_score?: number | null;
   risk_level?: string | null;
+  /** The words for the score (API, since 2026-11-01). */
+  risk_label?: string | null;
+  /** Why an outbound floor set the score — "39% of outflow went to mixer users (Tornado Cash)" (API, since 2026-11-10). */
+  score_reasons?: string[] | null;
   risk_status?: string | null;
   risk_score_note?: string | null;
   score_basis?: string | null;
@@ -111,7 +128,9 @@ export function reputationRiskLines(d: ReputationRiskInput): string[] {
   if (typeof d.risk_score !== "number") {
     return [notScoredLine(note ?? d.risk_score_note ?? "no score is available for this address")];
   }
-  const lines = [`**Risk Score:** ${d.risk_score}/100 — **${(d.risk_level ?? formatRiskLevel(d.risk_score)).toUpperCase()}**`];
+  const lines = [`**Risk Score:** ${d.risk_score}/100 — **${labelFor(d.risk_score, d.risk_label)}**`];
+  const reasons = (d.score_reasons ?? []).filter((r) => typeof r === "string" && r.trim());
+  if (reasons.length) lines.push(`**Why:** ${reasons.join("; ")}`);
   if (d.score_basis) lines.push(`**Basis:** ${d.score_basis}`);
   if (d.exposure_checked === false) {
     lines.push("**Counterparty Exposure:** not checked — outbound counterparties were not read, so the score above is a floor, not a full assessment.");
@@ -146,8 +165,7 @@ export function lookupRiskLines(d: LookupRiskInput): string[] {
     return [notScoredLine(screenNote ?? "the score was withheld because a screen that could have raised it did not answer")];
   }
 
-  const level = (d.risk.level ?? formatRiskLevel(d.risk.score)).toUpperCase();
-  const lines = [`**Risk Score:** ${d.risk.score}/100 — **${level}**`];
+  const lines = [`**Risk Score:** ${d.risk.score}/100 — **${labelFor(d.risk.score, d.risk_verdict?.label)}**`];
   const factors = Object.entries(d.risk.factors ?? {})
     .filter(([k, v]) => v === true && !RETIRED_RISK_FACTORS.includes(k))
     .map(([k]) => k);

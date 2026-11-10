@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.4.4 — 2026-11-10
+
+- **The risk level is printed in the words every other ChainHint surface uses.** The tools
+  printed the API's level token in capitals, and the tokens cross the words: `low` is the band
+  the address page, the Telegram bot and the PDF call "Moderate", while "Low Risk" is the
+  token `clean`. One address read "30/100 · Moderate" in the bot and "30/100 — LOW" here. Both
+  tools now print the API's `risk_label` (`risk_verdict.label` on `lookup_address`): Low Risk ·
+  Moderate · Elevated · High Risk · Critical. The bounds did not move — 81 / 61 / 41 / 21.
+- **The fallback ladder was the one the API left on 2026-11-01.** With no level in the response
+  the server cut at 90 / 70 / 40 / 10, so a 12 printed as "LOW" where the API says `clean`.
+  It is 81 / 61 / 41 / 21 now.
+- **`check_wallet_risk` says why a floor set the score.** It prints the API's new
+  `score_reasons` as a `Why:` line — for example "39% of outflow went to mixer users
+  (Tornado Cash)". `lookup_address` already printed it under `Risk Details`.
+
 ## 1.4.3 — 2026-11-10
 
 - **`lookup_address` printed no risk line at all when the API withheld the score.** The API

@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  addressTypeLine, apiErrorMessage, isTraceableChain, lookupRiskLines, reputationRiskLines, traceStatusLine, tracingUnavailableMessage,
+  addressTypeLine, apiErrorMessage, isTraceableChain, lookupRiskLines, reputationRiskLines, riskLabel, traceStatusLine, tracingUnavailableMessage,
 } from "../dist/verdicts.js";
 
 test("lookup: risk_status unavailable never prints a score or CLEAN (the 1.3.1 Solana defect)", () => {
@@ -15,7 +15,7 @@ test("lookup: risk_status unavailable never prints a score or CLEAN (the 1.3.1 S
   assert.match(text, /DATA UNAVAILABLE/);
   assert.match(text, /not a clean result/);
   assert.doesNotMatch(text, /0\/100/);
-  // The 1.3.1 line was "**Risk Score:** 0/100 — **CLEAN**".
+  // The 1.3.1 line was "**Risk Score:** 0/100 — **Low Risk**".
   assert.doesNotMatch(text, /\*\*CLEAN\*\*|— CLEAN/);
   assert.equal(text.match(/not a clean result/gi)?.length, 1, "said once, even when the API detail already says it");
 });
@@ -37,7 +37,7 @@ test("lookup: a scored address keeps its score and factors", () => {
     risk_status: "scored",
   });
   assert.deepEqual(lines, [
-    "**Risk Score:** 85/100 — **HIGH**",
+    "**Risk Score:** 85/100 — **Critical**",
     "**Risk Factors:** mixer_interaction",
     "**Risk Details:** Tornado Cash outflow",
   ]);
@@ -54,7 +54,7 @@ test("lookup: scored from the DB but transfers unavailable says the exposure is 
 });
 
 test("lookup: old API without risk_status still prints the score", () => {
-  assert.deepEqual(lookupRiskLines({ risk: { score: 12 } }), ["**Risk Score:** 12/100 — **LOW**"]);
+  assert.deepEqual(lookupRiskLines({ risk: { score: 12 } }), ["**Risk Score:** 12/100 — **Low Risk**"]);
 });
 
 test("trace: ✅ only when the stored trace holds transfers", () => {
@@ -96,7 +96,7 @@ test("lookup: contract_not_verified is retired — never printed, even if an old
     risk: { score: 10, level: "low", factors: { contract_not_verified: true, new_address: true } },
     risk_status: "scored",
   });
-  assert.deepEqual(lines, ["**Risk Score:** 10/100 — **LOW**", "**Risk Factors:** new_address"]);
+  assert.deepEqual(lines, ["**Risk Score:** 10/100 — **Low Risk**", "**Risk Factors:** new_address"]);
   assert.doesNotMatch(lookupRiskLines({ risk: { score: 0, factors: { contract_not_verified: true } } }).join("\n"), /contract_not_verified|Risk Factors/);
 });
 
@@ -144,7 +144,7 @@ test("lookup: unavailable names the screen that failed, not transfer data", () =
 test("lookup: a checked zero prints what it rests on", () => {
   const basis = "Checked 6 counterparties in recent transfers, none flagged. Older activity was not read.";
   const lines = lookupRiskLines({ risk: { score: 0, level: "clean" }, risk_status: "scored", score_basis: basis });
-  assert.deepEqual(lines, ["**Risk Score:** 0/100 — **CLEAN**", `**Basis:** ${basis}`]);
+  assert.deepEqual(lines, ["**Risk Score:** 0/100 — **Low Risk**", `**Basis:** ${basis}`]);
 });
 
 test("address type: null is not an EOA", () => {
@@ -174,7 +174,7 @@ test("check_wallet_risk: a printed score says what it does not include", () => {
     risk_score: 45, risk_level: "medium", exposure_checked: false,
     screen_status: { complete: false, note: SANCTIONS_NOTE }, sanctions: { hit: null, complete: false },
   });
-  assert.equal(lines[0], "**Risk Score:** 45/100 — **MEDIUM**");
+  assert.equal(lines[0], "**Risk Score:** 45/100 — **Elevated**");
   assert.match(lines[1], /Counterparty Exposure:\*\* not checked/);
   assert.match(lines[2], /sanctions list OFAC SDN is out of date/);
 });
@@ -183,6 +183,22 @@ test("check_wallet_risk: a complete, checked answer is the score, its basis and 
   const basis = "Checked 3 counterparties in recent transfers, none flagged. Older activity was not read.";
   assert.deepEqual(
     reputationRiskLines({ risk_score: 0, risk_level: "clean", exposure_checked: true, score_basis: basis, screen_status: { complete: true, incomplete: [], note: null }, sanctions: { hit: false, complete: true } }),
-    ["**Risk Score:** 0/100 — **CLEAN**", `**Basis:** ${basis}`],
+    ["**Risk Score:** 0/100 — **Low Risk**", `**Basis:** ${basis}`],
   );
+});
+
+test("1.4.4: the level is the words every other surface prints, not the API's token", () => {
+  // The bot said "30/100 · Moderate" and this server said "30/100 — LOW" for one address.
+  assert.equal(reputationRiskLines({ risk_score: 30, risk_level: "low", risk_label: "Moderate" })[0], "**Risk Score:** 30/100 — **Moderate**");
+  // An API without risk_label: the same ladder, 81 / 61 / 41 / 21 — never the token.
+  assert.equal(reputationRiskLines({ risk_score: 30, risk_level: "low" })[0], "**Risk Score:** 30/100 — **Moderate**");
+  assert.deepEqual([0, 20, 21, 40, 41, 60, 61, 80, 81, 100].map(riskLabel),
+    ["Low Risk", "Low Risk", "Moderate", "Moderate", "Elevated", "Elevated", "High Risk", "High Risk", "Critical", "Critical"]);
+  assert.equal(lookupRiskLines({ risk: { score: 30, level: "low" }, risk_verdict: { score: 30, level: "low", label: "Moderate" } })[0], "**Risk Score:** 30/100 — **Moderate**");
+});
+
+test("1.4.4: check_wallet_risk prints why a floor set the score", () => {
+  const lines = reputationRiskLines({ risk_score: 30, risk_level: "low", risk_label: "Moderate", score_reasons: ["39% of outflow went to mixer users (Tornado Cash)"], exposure_checked: true });
+  assert.deepEqual(lines, ["**Risk Score:** 30/100 — **Moderate**", "**Why:** 39% of outflow went to mixer users (Tornado Cash)"]);
+  assert.equal(reputationRiskLines({ risk_score: 30, score_reasons: [] }).length, 1);
 });
