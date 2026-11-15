@@ -1,0 +1,107 @@
+{
+ "address": "0x732afda0d3e88611a2b2c8ffb0428486619f35a5",
+ "chain": "ethereum",
+ "risk": {
+  "score": 0,
+  "level": "clean",
+  "factors": {
+   "sanctions_match": false,
+   "goplus_malicious": false,
+   "known_hacker_entity": false,
+   "known_scam_entity": false,
+   "mixer_interaction": false,
+   "high_risk_labels": false,
+   "contract_not_verified": false,
+   "new_address": false,
+   "high_tx_velocity": false,
+   "restricted_asset_exposure": false
+  },
+  "details": [
+   "No risk factors detected"
+  ],
+  "screens": {
+   "complete": true,
+   "incomplete": [],
+   "note": null
+  }
+ },
+ "entity": null,
+ "labels": [
+  "Named in US court filing"
+ ],
+ "attributed_on": null,
+ "attributed_on_note": null,
+ "is_contract": false,
+ "sanctions": {
+  "identifications": [],
+  "evidence": [],
+  "providers": {
+   "local": {
+    "status": "ok"
+   }
+  },
+  "complete": true
+ },
+ "exposure": {
+  "inflow": [],
+  "outflow": [
+   {
+    "category": "uncategorized",
+    "usd": 29350117.31,
+    "pct": 100,
+    "counterparties": 6,
+    "top_entities": []
+   }
+  ],
+  "total_in_usd": 0,
+  "total_out_usd": 29350117.31,
+  "counterparties_total": 6,
+  "counterparties_identified": 0,
+  "risk": {
+   "scored": true,
+   "pct": 0,
+   "level": "minimal",
+   "details": [
+    "No risky counterparty categories detected in observed flows"
+   ]
+  }
+ },
+ "risk_status": "scored",
+ "score_state": "signal",
+ "score_basis": null,
+ "risk_verdict": {
+  "score": 0,
+  "level": "clean",
+  "label": "Low Risk",
+  "screen_status": {
+   "complete": true,
+   "incomplete": [],
+   "note": null
+  }
+ },
+ "evidence": [],
+ "public_record": [
+  {
+   "kind": "court_filing",
+   "authority": "US DOJ",
+   "document_ref": null,
+   "document_url": null,
+   "document_date": "2025-06-18",
+   "filing_kind": "filing",
+   "caveat": "Named in a public court filing. No role is asserted — filings name victims, exchanges and unrelated third parties alongside defendants. Open the document to read the context.",
+   "document_label": "DOJ press release, 2025-06-18"
+  },
+  {
+   "kind": "court_filing",
+   "authority": "US District Court, District of Columbia",
+   "document_ref": "1:25-cv-01907 (D.D.C.) #1",
+   "document_url": null,
+   "document_date": "2025-06-18",
+   "filing_kind": "filing",
+   "caveat": "Named in a public court filing. No role is asserted — filings name victims, exchanges and unrelated third parties alongside defendants. Open the document to read the context.",
+   "document_label": "Court record, 1:25-cv-01907 (D.D.C.)"
+  }
+ ],
+ "attribution_basis": null,
+ "risk_score_note": "An automated estimate from on-chain data and published labels — not a finding that anyone did anything wrong."
+}

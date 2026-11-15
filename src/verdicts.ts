@@ -47,6 +47,16 @@ export function riskLabel(score: number): string {
   return "Low Risk";
 }
 
+/**
+ * The sentence printed next to every risk score (owner decision 2026-11-03): the API sends it
+ * as `risk_score_note` — "An automated estimate … not a finding that anyone did anything
+ * wrong." — and the site, the Telegram bot and the PDF print it. Printed only when the API
+ * sent it, so the words stay the product's and are not retyped here.
+ */
+function scoreNoteLines(note: string | null | undefined): string[] {
+  return typeof note === "string" && note.trim() ? [`**Note:** ${note.trim()}`] : [];
+}
+
 /** The API's own label when it sent one, else the same ladder computed here. */
 function labelFor(score: number, apiLabel: string | null | undefined): string {
   return typeof apiLabel === "string" && apiLabel.trim() ? apiLabel.trim() : riskLabel(score);
@@ -72,6 +82,8 @@ export interface LookupRiskInput {
   risk_verdict?: { score?: number | null; level?: string; label?: string | null; screen_status?: ScreenStatusLike | null } | null;
   /** "Checked N counterparties in recent transfers, none flagged. Older activity was not read." */
   score_basis?: string | null;
+  /** What the score is: "An automated estimate … not a finding that anyone did anything wrong." */
+  risk_score_note?: string | null;
   /** address-lookup: "scored" | "insufficient_data" | "unavailable". Absent on old API versions. */
   risk_status?: string;
   data_availability?: { transfers?: string; provider?: string; reason?: string; detail?: string };
@@ -131,6 +143,7 @@ export function reputationRiskLines(d: ReputationRiskInput): string[] {
   const lines = [`**Risk Score:** ${d.risk_score}/100 — **${labelFor(d.risk_score, d.risk_label)}**`];
   const reasons = (d.score_reasons ?? []).filter((r) => typeof r === "string" && r.trim());
   if (reasons.length) lines.push(`**Why:** ${reasons.join("; ")}`);
+  lines.push(...scoreNoteLines(d.risk_score_note));
   if (d.score_basis) lines.push(`**Basis:** ${d.score_basis}`);
   if (d.exposure_checked === false) {
     lines.push("**Counterparty Exposure:** not checked — outbound counterparties were not read, so the score above is a floor, not a full assessment.");
@@ -171,6 +184,7 @@ export function lookupRiskLines(d: LookupRiskInput): string[] {
     .map(([k]) => k);
   if (factors.length) lines.push(`**Risk Factors:** ${factors.join(", ")}`);
   if (d.risk.details?.length) lines.push(`**Risk Details:** ${d.risk.details.join("; ")}`);
+  lines.push(...scoreNoteLines(d.risk_score_note));
   if (d.score_basis) lines.push(`**Basis:** ${d.score_basis}`);
   // Scored from other inputs (DB entity, sanctions), but the transfer side was missing.
   if (d.exposure?.data_unavailable || d.data_availability?.transfers === "unavailable") {

@@ -20,7 +20,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { addressTypeLine, apiErrorMessage, lookupRiskLines, reputationRiskLines, traceStatusLine } from "./verdicts.js";
 import { evidenceLines, type EvidenceItem } from "./evidence.js";
-import { entityLine, type EntityBlock } from "./entity.js";
+import { entitySection, labelsSection, type EntityBlock, type PublicRecordItem } from "./entity.js";
+import { printedLabel, sourceLabel, bucketCategory, bucketType, graphItemTrust, type PrintableLabel } from "./label-print.js";
 import { ADDRESS_FORMS, normalizeAddr } from "./address.js";
 import { DATABASE_CANON } from "./canon.js";
 import { DEFAULT_SUPABASE_KEY, isSupabaseKeyConfigured, resolveSupabaseKey, supabaseRestHeaders } from "./supabase-rest.js";
@@ -34,7 +35,7 @@ const SUPABASE_URL = process.env.CHAINHINT_SUPABASE_URL ?? "https://kjiwfwymnuzx
 // Publishable key, sent only in `apikey` (never as a Bearer token) — see supabase-rest.ts.
 const SUPABASE_KEY = resolveSupabaseKey(process.env, DEFAULT_SUPABASE_KEY);
 
-const VERSION = "1.4.4";
+const VERSION = "1.4.5";
 const USER_AGENT = `chainhint-mcp/${VERSION}`;
 const FREE_CHECKS_PER_DAY = 3;
 const UPGRADE_HINT = "set CHAINHINT_API_KEY (Agency plan, https://chainhint.com/pricing) for 10,000/day";
@@ -184,6 +185,10 @@ type ExposureBucket = {
   pct: number;
   counterparties: number;
   top_entities: string[];
+  /** The part of `usd` from counterparties whose label is an attribution (a named source, no evidence): shown, never scored. */
+  attributed_usd?: number;
+  attributed_counterparties?: number;
+  attributed_by?: string[];
 };
 
 function formatExposure(label: string, buckets: ExposureBucket[] | undefined): string[] {
@@ -193,7 +198,12 @@ function formatExposure(label: string, buckets: ExposureBucket[] | undefined): s
     `**${label}:**`,
     ...sorted.map((b) => {
       const who = b.top_entities?.length ? ` — ${b.top_entities.slice(0, 3).join(", ")}` : "";
-      return `- ${b.category}: ${usd(b.usd)} (${b.pct}%, ${b.counterparties} counterpart${b.counterparties === 1 ? "y" : "ies"})${who}`;
+      // The API counts an attributed counterparty in its taint category (a bucket named "hacker")
+      // and says so in these fields. The category alone reads as a finding; the marker travels with it.
+      const att = (b.attributed_usd ?? 0) > 0
+        ? `; ${usd(b.attributed_usd)} of it ${b.attributed_by?.length ? `attributed by ${b.attributed_by.join(", ")}` : "attributed"}, unverified — not scored`
+        : "";
+      return `- ${b.category}: ${usd(b.usd)} (${b.pct}%, ${b.counterparties} counterpart${b.counterparties === 1 ? "y" : "ies"})${who}${att}`;
     }),
   ];
 }
@@ -255,7 +265,7 @@ const server = new McpServer({
 
 server.tool(
   "check_wallet_risk",
-  `Fast risk check for a crypto wallet address against ChainHint's entity database — ${DATABASE_CANON}. Returns risk score 0-100, risk level (clean/low/medium/high/critical/sanctioned), entity name and category, labels, and sanctions hit. Use it to decide allow/warn/block before paying or interacting with a counterparty wallet. Free: 3 checks per day without a key; CHAINHINT_API_KEY (Agency plan) lifts it to 10,000/day. For a deeper report (risk factors, exposure, balance) use lookup_address.`,
+  `Fast risk check for a crypto wallet address against ChainHint's entity database — ${DATABASE_CANON}. Returns risk score 0-100 (an estimate, not a finding), risk level (clean/low/medium/high/critical/sanctioned), entity name printed with how far it can be trusted (a hacker / scam / mixer label that nothing verifies is printed as an unverified claim with its source, never as a fact), labels, public-record citations and sanctions hit. Use it to decide allow/warn/block before paying or interacting with a counterparty wallet. Free: 3 checks per day without a key; CHAINHINT_API_KEY (Agency plan) lifts it to 10,000/day. For a deeper report (risk factors, exposure, balance) use lookup_address.`,
   {
     address: z.string().describe(`Wallet address to check: ${ADDRESS_FORMS}`),
     chain: z.string().optional().describe("Blockchain: ethereum, bsc, polygon, arbitrum, optimism, base, avalanche, gnosis, bitcoin, solana, tron, ton (default: auto-detect from address format; the response chain is the address family for bitcoin/solana/tron/ton)"),
@@ -280,6 +290,7 @@ server.tool(
         // attribution_unconfirmed / operating_status: migration 144 (optional).
         entity: EntityBlock | null;
         labels: string[];
+        attributed_on_note?: string | null;
         sanctions: { hit: boolean | null; complete?: boolean };
         is_contract: boolean | null;
         found_in_db: boolean;
@@ -339,16 +350,9 @@ server.tool(
       }
       if (walletEvidence.length) lines.push(`**Evidence:**`, ...walletEvidence);
 
-      if (d.entity?.name) {
-        // An unconfirmed attribution is marked; the API's top-level category is then "unknown".
-        lines.push(entityLine(d.entity, { showVerified: true }));
-      } else if (d.category) {
-        lines.push(`**Category:** ${d.category}`);
-      } else {
-        lines.push(`**Entity:** Unknown / unlabeled`);
-      }
-
-      if (d.labels?.length) lines.push(`**Labels:** ${[...new Set(d.labels)].join(", ")}`);
+      // A name is printed with how far it can be trusted (entity.ts → label-print.ts); an
+      // unconfirmed attribution is marked; the API's top-level category is then "unknown".
+      lines.push(...entitySection(d, { wallet: true }), ...labelsSection(d));
       if (d.agent) {
         // Registry fact (agent launchpad / factory / facilitator / wallet), not
         // a behavioural classification — mirrors the API's honest wording.
@@ -356,7 +360,7 @@ server.tool(
         lines.push(`🤖 **${cap}** — a registry fact, not a behavioural classification.`);
       }
       if (d.is_contract != null) lines.push(`**Type:** ${d.is_contract ? "Smart Contract" : "EOA (wallet)"}`);
-      lines.push(`**In ChainHint DB:** ${d.found_in_db ? "yes" : "no"}${d.sources?.length ? ` (sources: ${d.sources.join(", ")})` : ""}`);
+      lines.push(`**In ChainHint DB:** ${d.found_in_db ? "yes" : "no"}${d.sources?.length ? ` (sources: ${d.sources.map(sourceLabel).join(", ")})` : ""}`);
       lines.push(`**Checked at:** ${d.checked_at}`);
 
       const quota = quotaLine(headers, "checks");
@@ -392,8 +396,12 @@ server.tool(
           risk?: { score: number; level: string; factors?: Record<string, boolean>; details?: string[] } | null;
           risk_verdict?: { score?: number | null; level?: string; screen_status?: { complete?: boolean; incomplete?: string[]; note?: string | null } | null } | null;
           score_basis?: string | null;
-          entity?: (EntityBlock & { source?: string }) | null;
+          entity?: EntityBlock | null;
           labels?: string[];
+          attributed_on_note?: string | null;
+          public_record?: PublicRecordItem[] | null;
+          attribution_basis?: { note?: string | null } | null;
+          risk_score_note?: string | null;
           is_contract?: boolean | null;
           sanctions?: { identifications?: Array<{ name?: string; program?: string; url?: string }> };
           goplus?: Record<string, string>;
@@ -440,17 +448,13 @@ server.tool(
         addressTypeLine(d.is_contract),
       ];
 
-      if (d.entity?.name) {
-        lines.push(entityLine(d.entity));
-      } else {
-        lines.push(`**Entity:** Unknown / unlabeled`);
-      }
+      lines.push(...entitySection(d));
 
       if (d.agent) {
         const cap = d.agent.summary.charAt(0).toUpperCase() + d.agent.summary.slice(1);
         lines.push(`🤖 **${cap}** — a registry fact, not a behavioural classification.`);
       }
-      if (d.labels?.length) lines.push(`**Labels:** ${[...new Set(d.labels)].join(", ")}`);
+      lines.push(...labelsSection(d));
 
       // Never a score or "CLEAN" when there was nothing to score (verdicts.ts).
       lines.push(...lookupRiskLines(d));
@@ -497,14 +501,19 @@ server.tool(
 
 // ── Tool 3: get_trace_status ──────────────────────────────────────────────────
 
-type Endpoint = {
+// A stored endpoint carries the label fields of the trace (fund-trace stamps them): the source,
+// the trust stamp, the attribution and the evidence classes. They decide how the name is printed.
+type Endpoint = PrintableLabel & {
   address: string;
-  type?: string;
-  entity?: string | null;
-  entity_name?: string | null;
-  entity_category?: string | null;
   amount_usd?: number | null;
 };
+
+/** The endpoint as the one print path reads it. */
+function printEndpoint(e: Endpoint) {
+  const name = e.entity_name ?? e.entity ?? null;
+  const item: PrintableLabel = { ...e, entity_name: name };
+  return { item, shown: printedLabel(item), trust: graphItemTrust(item), bucket: endpointBucket(bucketCategory(item), bucketType(item), name) };
+}
 
 server.tool(
   "get_trace_status",
@@ -604,14 +613,22 @@ server.tool(
       const graphPriced = edges.length === 0 || edges.some((e) => e.amount_usd != null && Number(e.amount_usd) > 0);
       const money = (n: number | null | undefined) => (graphPriced ? usd(n) : "unpriced");
       if (endpoints.length) {
-        const byType = new Map<string, { usd: number; n: number; entities: Map<string, number> }>();
+        const byType = new Map<string, { usd: number; n: number; entities: Map<string, number>; attributed: number; by: Set<string> }>();
         for (const e of endpoints) {
-          const t = endpointBucket(e.entity_category, e.type, e.entity_name ?? e.entity);
-          const b = byType.get(t) ?? { usd: 0, n: 0, entities: new Map() };
+          // The category an endpoint is COUNTED with is the one its label may act with: an
+          // unverified "hacker" / "scam" / "mixer" is counted unknown, an attributed one is
+          // counted in its category WITH the attribution marker (label-print.ts).
+          const { item, shown, trust, bucket: t } = printEndpoint(e);
+          const b = byType.get(t) ?? { usd: 0, n: 0, entities: new Map(), attributed: 0, by: new Set<string>() };
           b.usd += e.amount_usd ?? 0;
           b.n += 1;
-          const name = e.entity_name ?? e.entity;
-          if (name) b.entities.set(name, (b.entities.get(name) ?? 0) + (e.amount_usd ?? 0));
+          if (trust === "attributed") {
+            b.attributed += 1;
+            if (item.attribution?.publisher) b.by.add(item.attribution.publisher);
+          }
+          // An attributed name is bare here: the bucket line says once who attributed it. Every other name carries its marker.
+          const label = trust === "attributed" ? shown.name : shown.text;
+          if (label) b.entities.set(label, (b.entities.get(label) ?? 0) + (e.amount_usd ?? 0));
           byType.set(t, b);
         }
         const totalUsd = [...byType.values()].reduce((s, b) => s + b.usd, 0);
@@ -620,7 +637,8 @@ server.tool(
         for (const [t, b] of [...byType.entries()].sort((a, b) => b[1].usd - a[1].usd)) {
           const top = [...b.entities.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n]) => n);
           const pct = totalUsd > 0 ? ` (${((b.usd / totalUsd) * 100).toFixed(1)}%)` : "";
-          lines.push(`- **${t}**: ${money(b.usd)}${graphPriced ? pct : ""} across ${b.n} address(es)${top.length ? ` — ${top.join(", ")}` : ""}`);
+          const att = b.attributed ? `; ${b.attributed} attributed by ${[...b.by].join(", ") || "a named source"}, unverified — not scored` : "";
+          lines.push(`- **${t}**: ${money(b.usd)}${graphPriced ? pct : ""} across ${b.n} address(es)${att}${top.length ? ` — ${top.join(", ")}` : ""}`);
         }
         const topEndpoints = [...endpoints]
           .filter((e) => (e.amount_usd ?? 0) > 0)
@@ -629,8 +647,8 @@ server.tool(
         if (topEndpoints.length) {
           lines.push(`**Largest endpoints:**`);
           for (const e of topEndpoints) {
-            const name = e.entity_name ?? e.entity ?? "unattributed";
-            lines.push(`- ${truncateAddr(e.address)} — ${name} (${endpointBucket(e.entity_category, e.type, e.entity_name ?? e.entity)}): ${money(e.amount_usd)}`);
+            const { shown, bucket } = printEndpoint(e);
+            lines.push(`- ${truncateAddr(e.address)} — ${shown.text ?? "unattributed"} (${bucket}): ${money(e.amount_usd)}`);
           }
         }
       }

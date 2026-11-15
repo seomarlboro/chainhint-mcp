@@ -202,3 +202,10 @@ test("1.4.4: check_wallet_risk prints why a floor set the score", () => {
   assert.deepEqual(lines, ["**Risk Score:** 30/100 — **Moderate**", "**Why:** 39% of outflow went to mixer users (Tornado Cash)"]);
   assert.equal(reputationRiskLines({ risk_score: 30, score_reasons: [] }).length, 1);
 });
+
+test("1.4.5: a printed score carries the API's own estimate note, and nothing is invented when it is absent", () => {
+  const note = "An automated estimate from on-chain data and published labels — not a finding that anyone did anything wrong.";
+  assert.deepEqual(reputationRiskLines({ risk_score: 30, risk_label: "Moderate", risk_score_note: note }), ["**Risk Score:** 30/100 — **Moderate**", `**Note:** ${note}`]);
+  assert.deepEqual(lookupRiskLines({ risk: { score: 12 }, risk_score_note: note }), ["**Risk Score:** 12/100 — **Low Risk**", `**Note:** ${note}`]);
+  assert.doesNotMatch(reputationRiskLines({ risk_score: null, risk_score_note: note, screen_status: { note: "a screen did not answer" } }).join("\n"), /automated estimate/);
+});

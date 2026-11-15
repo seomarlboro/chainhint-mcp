@@ -1,0 +1,136 @@
+{
+ "address": "0x47ce0c6ed5b0ce3d3a51fdb1c52dc66a7c3c2936",
+ "chain": "ethereum",
+ "risk": {
+  "score": 60,
+  "level": "medium",
+  "factors": {
+   "sanctions_match": false,
+   "goplus_malicious": false,
+   "known_hacker_entity": false,
+   "known_scam_entity": true,
+   "mixer_interaction": true,
+   "high_risk_labels": false,
+   "contract_not_verified": false,
+   "new_address": false,
+   "high_tx_velocity": false,
+   "restricted_asset_exposure": false
+  },
+  "details": [
+   "Known mixer entity",
+   "Associated with mixer/privacy protocol",
+   "Floor applied: known mixer entity → minimum 60"
+  ],
+  "screens": {
+   "complete": true,
+   "incomplete": [],
+   "note": null
+  }
+ },
+ "entity": {
+  "name": "Tornado Cash",
+  "source": "tornado-cash-contracts",
+  "category": "mixer",
+  "verified": false,
+  "confidence": 0.5,
+  "risk_level": "high",
+  "subcategory": "privacy",
+  "display_name": null,
+  "operating_status": null,
+  "attribution_method": "public_label_registry",
+  "attribution_unconfirmed": null
+ },
+ "labels": [
+  "Tornado Cash: 1 ETH pool",
+  "Tornado Cash"
+ ],
+ "attributed_on": null,
+ "attributed_on_note": null,
+ "is_contract": true,
+ "sanctions": {
+  "identifications": [],
+  "evidence": [],
+  "providers": {
+   "local": {
+    "status": "ok"
+   }
+  },
+  "complete": true
+ },
+ "exposure": {
+  "inflow": [
+   {
+    "category": "mixer",
+    "usd": 16442.82,
+    "pct": 100,
+    "counterparties": 1,
+    "top_entities": [
+     "Tornado Cash"
+    ],
+    "attributed_usd": 16442.82,
+    "attributed_counterparties": 1,
+    "attributed_by": [
+     "Tornado Cash's own contract list"
+    ]
+   }
+  ],
+  "outflow": [
+   {
+    "category": "mixer_user",
+    "usd": 9134.9,
+    "pct": 12.2,
+    "counterparties": 1,
+    "top_entities": [
+     "Tornado Cash withdrawal recipient (chain read)"
+    ]
+   },
+   {
+    "category": "uncategorized",
+    "usd": 65771.28,
+    "pct": 87.8,
+    "counterparties": 7,
+    "top_entities": []
+   }
+  ],
+  "total_in_usd": 16442.82,
+  "total_out_usd": 74906.18,
+  "counterparties_total": 9,
+  "counterparties_identified": 2,
+  "risk": {
+   "scored": true,
+   "pct": 0,
+   "level": "minimal",
+   "details": [
+    "No risky counterparty categories detected in observed flows"
+   ]
+  }
+ },
+ "risk_status": "scored",
+ "score_state": "signal",
+ "score_basis": null,
+ "risk_verdict": {
+  "score": 60,
+  "level": "medium",
+  "label": "Elevated",
+  "screen_status": {
+   "complete": true,
+   "incomplete": [],
+   "note": null
+  }
+ },
+ "evidence": [],
+ "public_record": [
+  {
+   "kind": "court_filing",
+   "authority": "US District Court, N.D. Florida",
+   "document_ref": "3:22-cv-20375 (N.D. Fla.) #28",
+   "document_url": null,
+   "document_date": "2023-03-14",
+   "filing_kind": "filing",
+   "caveat": "Named in a public court filing. No role is asserted — filings name victims, exchanges and unrelated third parties alongside defendants. Open the document to read the context.",
+   "document_label": "Court record, 3:22-cv-20375 (N.D. Fla.)"
+  }
+ ],
+ "attribution_basis": null,
+ "risk_score_note": "An automated estimate from on-chain data and published labels — not a finding that anyone did anything wrong."
+}

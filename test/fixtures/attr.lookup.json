@@ -1,0 +1,131 @@
+{
+ "address": "0x47666fab8bd0ac7003bce3f5c3585383f09486e2",
+ "chain": "ethereum",
+ "risk": {
+  "score": 90,
+  "level": "critical",
+  "factors": {
+   "sanctions_match": false,
+   "goplus_malicious": true,
+   "known_hacker_entity": false,
+   "known_scam_entity": false,
+   "mixer_interaction": false,
+   "high_risk_labels": false,
+   "contract_not_verified": false,
+   "new_address": false,
+   "high_tx_velocity": false,
+   "restricted_asset_exposure": false,
+   "attributed_taint_label": true
+  },
+  "details": [
+   "GoPlus flags: stealing_attack",
+   "Attributed to Bybit Hack Exploiter by tracing from the theft (Bybit HackScan) — unverified",
+   "Floor applied: unverified hacker attribution → minimum 70",
+   "Sends $712,522,557 (97.2% of outbound) to law-enforcement-attributed counterparty (Law-enforcement-attributed address) → risk floored to 90"
+  ],
+  "screens": {
+   "complete": true,
+   "incomplete": [],
+   "note": null
+  }
+ },
+ "entity": {
+  "name": "Bybit Hack Exploiter",
+  "source": "bybit_hackscan",
+  "category": "hacker",
+  "verified": false,
+  "confidence": 0.5,
+  "risk_level": "critical",
+  "subcategory": null,
+  "display_name": null,
+  "operating_status": null,
+  "attribution_method": "hackscan_trace",
+  "attribution_unconfirmed": null
+ },
+ "labels": [
+  "Bybit Hack Exploiter"
+ ],
+ "attributed_on": null,
+ "attributed_on_note": null,
+ "is_contract": false,
+ "sanctions": {
+  "identifications": [],
+  "evidence": [],
+  "providers": {
+   "local": {
+    "status": "ok"
+   }
+  },
+  "complete": true
+ },
+ "exposure": {
+  "inflow": [
+   {
+    "category": "law_enforcement_attributed",
+    "usd": 496166.36,
+    "pct": 0.2,
+    "counterparties": 1,
+    "top_entities": [
+     "Law-enforcement-attributed address"
+    ]
+   },
+   {
+    "category": "defi",
+    "usd": 211526150.8,
+    "pct": 99.8,
+    "counterparties": 1,
+    "top_entities": [
+     "Gnosis Safe"
+    ]
+   }
+  ],
+  "outflow": [
+   {
+    "category": "law_enforcement_attributed",
+    "usd": 712522556.85,
+    "pct": 97.2,
+    "counterparties": 39,
+    "top_entities": [
+     "Law-enforcement-attributed address"
+    ]
+   },
+   {
+    "category": "uncategorized",
+    "usd": 20690059,
+    "pct": 2.8,
+    "counterparties": 7,
+    "top_entities": []
+   }
+  ],
+  "total_in_usd": 212022317.16,
+  "total_out_usd": 733212615.85,
+  "counterparties_total": 48,
+  "counterparties_identified": 41,
+  "risk": {
+   "scored": true,
+   "pct": 75.4,
+   "level": "critical",
+   "details": [
+    "$712,522,556.85 to law enforcement attributed (Law-enforcement-attributed address)",
+    "$496,166.36 from law enforcement attributed (Law-enforcement-attributed address)"
+   ]
+  }
+ },
+ "risk_status": "scored",
+ "score_state": "signal",
+ "score_basis": null,
+ "risk_verdict": {
+  "score": 90,
+  "level": "critical",
+  "label": "Critical",
+  "screen_status": {
+   "complete": true,
+   "incomplete": [],
+   "note": null
+  }
+ },
+ "evidence": [],
+ "public_record": [],
+ "attribution_basis": null,
+ "risk_score_note": "An automated estimate from on-chain data and published labels — not a finding that anyone did anything wrong."
+}

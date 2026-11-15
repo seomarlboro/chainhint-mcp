@@ -8,8 +8,13 @@ test("without the new fields the line is exactly the 1.3.3 wording", () => {
     entityLine({ name: "Binance", category: "exchange", subcategory: "hot_wallet", verified: true }, { showVerified: true }),
     "**Entity:** Binance (exchange / hot_wallet, verified)",
   );
+  // 1.4.5: a taint category nothing verifies is a claim, never "(mixer, confidence 90%)".
   assert.equal(
     entityLine({ name: "Tornado Cash", category: "mixer", subcategory: null, confidence: 0.9 }),
+    "**Entity:** Tornado Cash — mixer, unverified",
+  );
+  assert.equal(
+    entityLine({ name: "Tornado Cash", category: "mixer", confidence: 0.9 }, { evidenceClasses: ["sanctions_designation"] }),
     "**Entity:** Tornado Cash (mixer, confidence 90%)",
   );
   assert.deepEqual(entityMarkers({ name: "x", attribution_unconfirmed: false, operating_status: null }), []);

@@ -1,0 +1,55 @@
+{
+ "address": "0x0d5550d52428e7e3175bfc9550207e4ad3859b17",
+ "chain": "ethereum",
+ "chain_supported": true,
+ "risk_score": 45,
+ "risk_level": "medium",
+ "risk_label": "Elevated",
+ "risk_score_note": "An automated estimate from on-chain data and published labels — not a finding that anyone did anything wrong.",
+ "risk_status": "scored",
+ "score_state": "signal",
+ "checked_counterparties": 0,
+ "score_basis": null,
+ "score_reasons": [],
+ "exposure_checked": true,
+ "category": "mixer",
+ "entity": {
+  "name": "Tornado Cash",
+  "category": "mixer",
+  "subcategory": "privacy",
+  "verified": false,
+  "attribution_unconfirmed": false,
+  "operating_status": null,
+  "actor": null,
+  "freeze_requestable": false,
+  "contact_source_verified": null,
+  "contact_note": null,
+  "label_trust": "unverified",
+  "heuristic_flag": null,
+  "attribution": null,
+  "attributed_on": "arbitrum",
+  "attributed_on_note": "attributed on Arbitrum"
+ },
+ "labels": [
+  "Ano2MassProxyLight",
+  "Tornado Cash"
+ ],
+ "attributed_on": "arbitrum",
+ "sanctions": {
+  "hit": false,
+  "complete": true,
+  "list_matches": []
+ },
+ "screen_status": {
+  "complete": true,
+  "incomplete": [],
+  "note": null
+ },
+ "evidence": [],
+ "is_contract": true,
+ "found_in_db": true,
+ "sources": [
+  "blockscout-ethereum"
+ ],
+ "tier": "free"
+}
