@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.4.5 — 2026-11-15
+
+- **A name is printed with how far it can be trusted — the one print path the site, the bot and
+  the PDF got on 2026-11-15.** Until now `check_wallet_risk` and `lookup_address` printed the
+  stored entity name and category side by side: "Bybit Hack Exploiter (hacker)" for a label
+  that is only attributed by Bybit HackScan, "Tornado Cash (mixer)" for a manual entry with no
+  source on file. An agent reads that as a finding. Now: "Bybit Hack Exploiter — attributed by
+  Bybit HackScan, unverified"; "Tornado Cash — mixer, unverified (ChainHint manual entry)";
+  "Tornado Cash — on Tornado Cash's own contract list" for a source that is the protocol's own
+  record; a Forta flag is "Detector alert (Forta), unverified". A category stands without a
+  marker only beside verifying evidence on the address, and an issuer freeze alone is not that.
+  The rules are a port of `printedLabel` in `src/label-print.ts` (mirror of the main
+  repository's `_shared/label-trust.ts`, 2026-11-15).
+- **Labels:** the entity's own name is no longer repeated bare under `Labels:`, and the rest
+  say they carry no verification unless an Evidence line says so.
+- **An address named only in a court filing is a citation.** `lookup_address` prints the API's
+  `public_record` ("No role is asserted") as a `Public record:` block; `check_wallet_risk`
+  turns the "Named in US court filing" label into the same one-line citation. Neither prints it
+  as a label or a risk.
+- **Every printed score carries the API's `risk_score_note`** ("An automated estimate … not a
+  finding that anyone did anything wrong.").
+- **Counterparty exposure and trace endpoints:** an attributed counterparty counted in a taint
+  bucket now says "attributed by <publisher>, unverified — not scored". `get_trace_status`
+  counts an endpoint with the category its label may act with: an unverified "hacker" is
+  counted unknown (it was "attacker-attributed"), an attributed one is counted with its marker,
+  and names are printed with theirs.
+- `check_wallet_risk` prints `sources` as "address record from: …" (how the address row entered the database, not the entity's source — beside "attributed by Bybit HackScan" it read as a contradiction) and omits `Checked at` when the API sends none.
+- `lookup_address` prints `attribution_basis` as `Why this name:`; `attributed on Arbitrum`
+  (a name read from the same address on another chain) is printed beside the entity; source
+  keys print as readers should see them ("chainhint:manual" → "ChainHint manual entry").
+- Tests run the real server over stdio against recorded, trimmed API responses
+  (`test/fixtures`) for four live addresses. No tool or argument changed.
+
 ## 1.4.4 — 2026-11-10
 
 - **The risk level is printed in the words every other ChainHint surface uses.** The tools

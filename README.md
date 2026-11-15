@@ -77,11 +77,13 @@ Add an Agency key to the server entry (any client):
 
 ```
 ## Wallet Risk Report: 0x47666f...9486e2
+**Address:** 0x47666fab8bd0ac7003bce3f5c3585383f09486e2
 **Chain:** ethereum
-**Risk Score:** 85/100 — **CRITICAL**
-**Entity:** Bybit Hack Exploiter (hacker)
-**Labels:** Hacker/Exploiter, Bybit Hack Exploiter
-**In ChainHint DB:** yes (sources: chainhint:manual)
+**Risk Score:** 90/100 — **Critical**
+**Why:** Attributed to Bybit Hack Exploiter by tracing from the theft (Bybit HackScan) — unverified; …
+**Note:** An automated estimate from on-chain data and published labels — not a finding that anyone did anything wrong.
+**Entity:** Bybit Hack Exploiter — attributed by Bybit HackScan, unverified
+**In ChainHint DB:** yes (address record from: ChainHint manual entry)
 
 Free tier: 2 of 3 checks left today — set CHAINHINT_API_KEY (Agency plan, https://chainhint.com/pricing) for 10,000/day.
 ```
@@ -90,6 +92,8 @@ When the address is in ChainHint's agent-infrastructure registry (agent-token la
 
 Evidence and entity lines say what the finding is, never more:
 
+- A name is always printed with how far it can be trusted: *attributed by <publisher>, unverified*, *mixer, unverified (ChainHint manual entry)*, *Detector alert (Forta), unverified*, or *on <the protocol's own list>* — never a bare "hacker" / "scam" / "mixer". A category stands alone only beside verifying evidence on the address.
+- An address named only in a court filing is a *Public record* citation — no role is asserted, and it is not a risk finding.
 - `⛔ Sanctioned` only for a sanctions designation; an issuer freeze, a law-enforcement attribution, a seizure order or a blocklist each says *Not a sanctions designation.*
 - A freeze of the tokens held by a token's own contract (Tether blacklisted the USDT held by the USDT contract) prints *Tether blacklisted tokens held by this contract* — it carries no risk weight and is not a "Frozen by issuer" verdict.
 - An entity whose attribution is unconfirmed is printed as a candidate (*⚠️ Attribution unconfirmed*) and a venue that no longer operates is marked *Venue closed* or *Bankrupt*.

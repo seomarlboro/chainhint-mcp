@@ -1,0 +1,62 @@
+{
+ "address": "0x47666fab8bd0ac7003bce3f5c3585383f09486e2",
+ "chain": "ethereum",
+ "chain_supported": true,
+ "risk_score": 90,
+ "risk_level": "critical",
+ "risk_label": "Critical",
+ "risk_score_note": "An automated estimate from on-chain data and published labels — not a finding that anyone did anything wrong.",
+ "risk_status": "scored",
+ "score_state": "signal",
+ "checked_counterparties": 0,
+ "score_basis": null,
+ "score_reasons": [
+  "Attributed to Bybit Hack Exploiter by tracing from the theft (Bybit HackScan) — unverified",
+  "Sends $712,522,557 (97.2% of outbound) to law-enforcement-attributed counterparty (Law-enforcement-attributed address) → risk floored to 90"
+ ],
+ "exposure_checked": true,
+ "category": "hacker",
+ "entity": {
+  "name": "Bybit Hack Exploiter",
+  "category": "hacker",
+  "subcategory": null,
+  "verified": false,
+  "attribution_unconfirmed": false,
+  "operating_status": null,
+  "actor": null,
+  "freeze_requestable": false,
+  "contact_source_verified": null,
+  "contact_note": null,
+  "label_trust": "attributed",
+  "heuristic_flag": null,
+  "attribution": {
+   "method": "hackscan_trace",
+   "publisher": "Bybit HackScan",
+   "note": "Attributed by tracing from the theft (Bybit HackScan), unverified — adds no points; sets a minimum of 70 on this address."
+  },
+  "attributed_on": null,
+  "attributed_on_note": null
+ },
+ "labels": [
+  "Bybit Hack Exploiter"
+ ],
+ "attributed_on": null,
+ "sanctions": {
+  "hit": false,
+  "complete": true,
+  "list_matches": []
+ },
+ "screen_status": {
+  "complete": true,
+  "incomplete": [],
+  "note": null
+ },
+ "evidence": [],
+ "is_contract": false,
+ "found_in_db": true,
+ "sources": [
+  "chainhint:manual"
+ ],
+ "tier": "free",
+ "checked_at": "2026-11-15T14:06:37.157Z"
+}

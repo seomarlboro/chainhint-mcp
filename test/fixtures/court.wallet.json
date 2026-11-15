@@ -1,0 +1,39 @@
+{
+ "address": "0x732afda0d3e88611a2b2c8ffb0428486619f35a5",
+ "chain": "ethereum",
+ "chain_supported": true,
+ "risk_score": 0,
+ "risk_level": "clean",
+ "risk_label": "Low Risk",
+ "risk_score_note": "An automated estimate from on-chain data and published labels — not a finding that anyone did anything wrong.",
+ "risk_status": "scored",
+ "score_state": "signal",
+ "checked_counterparties": 0,
+ "score_basis": null,
+ "score_reasons": [],
+ "exposure_checked": true,
+ "category": "unknown",
+ "entity": null,
+ "labels": [
+  "Named in US court filing"
+ ],
+ "attributed_on": null,
+ "sanctions": {
+  "hit": false,
+  "complete": true,
+  "list_matches": []
+ },
+ "screen_status": {
+  "complete": true,
+  "incomplete": [],
+  "note": null
+ },
+ "evidence": [],
+ "is_contract": false,
+ "found_in_db": true,
+ "sources": [
+  "court-filings"
+ ],
+ "tier": "free",
+ "checked_at": "2026-11-15T14:06:41.196Z"
+}
