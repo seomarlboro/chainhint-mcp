@@ -94,3 +94,16 @@ test("trace: an endpoint counts with what its label may act with, and says who a
   assert.match(text, /Bybit Hack Exploiter — attributed by Bybit HackScan, unverified \(attacker-attributed\)/);
   assert.doesNotMatch(text, /Unknown Exploiter[^\n]*\(attacker-attributed\)/);
 });
+
+test("no tool output contains 'undefined' or 'null' for the four cases", () => {
+  for (const k of Object.keys(out)) for (const t of [out[k].wallet, out[k].lookup]) {
+    assert.doesNotMatch(t, /\bundefined\b|\bnull\b/, k);
+  }
+  assert.match(out.attr.wallet, /\*\*Checked at:\*\* 2026-11-15T/);
+});
+
+test("`sources` is the address row's origin, and is not printed as the entity's source", () => {
+  assert.match(out.attr.wallet, /\(address record from: ChainHint manual entry\)/);
+  assert.doesNotMatch(out.attr.wallet, /\(sources:/);
+  assert.match(out.attr.wallet, /attributed by Bybit HackScan, unverified/);
+});

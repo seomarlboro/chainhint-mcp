@@ -57,5 +57,6 @@
  "sources": [
   "chainhint:manual"
  ],
- "tier": "free"
+ "tier": "free",
+ "checked_at": "2026-11-15T14:06:37.157Z"
 }

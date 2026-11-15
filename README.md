@@ -83,7 +83,7 @@ Add an Agency key to the server entry (any client):
 **Why:** Attributed to Bybit Hack Exploiter by tracing from the theft (Bybit HackScan) — unverified; …
 **Note:** An automated estimate from on-chain data and published labels — not a finding that anyone did anything wrong.
 **Entity:** Bybit Hack Exploiter — attributed by Bybit HackScan, unverified
-**In ChainHint DB:** yes (sources: ChainHint manual entry)
+**In ChainHint DB:** yes (address record from: ChainHint manual entry)
 
 Free tier: 2 of 3 checks left today — set CHAINHINT_API_KEY (Agency plan, https://chainhint.com/pricing) for 10,000/day.
 ```

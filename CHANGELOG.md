@@ -26,6 +26,7 @@
   counts an endpoint with the category its label may act with: an unverified "hacker" is
   counted unknown (it was "attacker-attributed"), an attributed one is counted with its marker,
   and names are printed with theirs.
+- `check_wallet_risk` prints `sources` as "address record from: …" (how the address row entered the database, not the entity's source — beside "attributed by Bybit HackScan" it read as a contradiction) and omits `Checked at` when the API sends none.
 - `lookup_address` prints `attribution_basis` as `Why this name:`; `attributed on Arbitrum`
   (a name read from the same address on another chain) is printed beside the entity; source
   keys print as readers should see them ("chainhint:manual" → "ChainHint manual entry").

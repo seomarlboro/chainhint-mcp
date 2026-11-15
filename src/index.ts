@@ -360,8 +360,8 @@ server.tool(
         lines.push(`🤖 **${cap}** — a registry fact, not a behavioural classification.`);
       }
       if (d.is_contract != null) lines.push(`**Type:** ${d.is_contract ? "Smart Contract" : "EOA (wallet)"}`);
-      lines.push(`**In ChainHint DB:** ${d.found_in_db ? "yes" : "no"}${d.sources?.length ? ` (sources: ${d.sources.map(sourceLabel).join(", ")})` : ""}`);
-      lines.push(`**Checked at:** ${d.checked_at}`);
+      lines.push(`**In ChainHint DB:** ${d.found_in_db ? "yes" : "no"}${d.sources?.length ? ` (address record from: ${d.sources.map(sourceLabel).join(", ")})` : ""}`);
+      if (d.checked_at) lines.push(`**Checked at:** ${d.checked_at}`);
 
       const quota = quotaLine(headers, "checks");
       if (quota) lines.push(``, quota);

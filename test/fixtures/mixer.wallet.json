@@ -55,5 +55,6 @@
  "sources": [
   "usdt_blacklist"
  ],
- "tier": "free"
+ "tier": "free",
+ "checked_at": "2026-11-15T14:06:37.914Z"
 }
